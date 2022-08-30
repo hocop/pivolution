@@ -1,12 +1,10 @@
 <template>
   <v-container>
-    <audio ref="audio" autoplay="true"></audio>
     <video ref="video" autoplay="true" width="100%" controls="controls"></video>
   </v-container>
 </template>
 
 <script>
-import { mapGetters, mapActions } from "vuex"
 
 export default {
   props: {},
@@ -14,13 +12,13 @@ export default {
   filters: {},
 
   methods: {
-    handleSendChannelStatusChange: function (event) {
+    handleSendChannelStatusChange (event) {
         if (this.sendChannel) {
             var state = this.sendChannel.readyState;
         }
     },
 
-    negotiate: async function (pc) {
+    async negotiate(pc) {
         pc.addTransceiver('video', {direction: 'recvonly'});
         pc.addTransceiver('audio', {direction: 'recvonly'});
 
@@ -58,31 +56,45 @@ export default {
         .then(response => response.json())
         .then(answer => pc.setRemoteDescription(answer))
         .catch(function(e) {
-            alert(e);
+          console.log('Connection error')
+            //alert(e);
         });
     },
+
+    connect() {
+      var config = {
+        sdpSemantics: 'unified-plan'
+      };
+
+      this.pc = new RTCPeerConnection(config);
+
+      this.sendChannel = this.pc.createDataChannel("control_channel");
+      this.sendChannel.onopen = this.handleSendChannelStatusChange;
+      this.sendChannel.onclose = this.handleSendChannelStatusChange;
+
+      const evtListener = (videoRef => evt => {
+        console.log('Recieved', evt.track.kind)
+        if (evt.track.kind == 'video') {
+            videoRef.srcObject = evt.streams[0];
+        }
+      })(this.$refs.video)
+      this.pc.addEventListener('track', evtListener)
+
+      this.negotiate(this.pc);
+    }
   },
 
   mounted() {
-    var config = {
-        sdpSemantics: 'unified-plan'
-    };
-
-    this.pc = new RTCPeerConnection(config);
-    
-    this.sendChannel = this.pc.createDataChannel("control_channel");
-    this.sendChannel.onopen = this.handleSendChannelStatusChange;
-    this.sendChannel.onclose = this.handleSendChannelStatusChange;
-
-    const evtListener = (video_ref => evt => {
-      console.log('Recieved', evt.track.kind)
-      if (evt.track.kind == 'video') {
-          video_ref.srcObject = evt.streams[0];
+    this.connect()
+  
+    const reconnect_handler = () => {
+      console.log(this.pc.iceConnectionState)
+      if(this.pc.iceConnectionState == 'disconnected') {
+        console.log('Attempting reconnect')
+        this.connect()
       }
-    })(this.$refs.video)
-    this.pc.addEventListener('track', evtListener)
-
-    this.negotiate(this.pc);
+    }
+    setInterval(reconnect_handler, 100)
   },
 
   destroyed() {
@@ -96,8 +108,8 @@ export default {
 
   data() {
     return {
-      pc: null,
-      sendChannel: null,
+      pc: {},
+      sendChannel: {},
     }
   },
 }

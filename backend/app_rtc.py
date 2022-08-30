@@ -10,8 +10,6 @@ import platform
 import ssl
 import time
 import threading
-
-import cv2
 from av import VideoFrame
 
 # webrtc imports
@@ -22,9 +20,12 @@ from aiortc import (
     VideoStreamTrack,
 )
 from aiortc.contrib.media import MediaBlackhole, MediaPlayer, MediaRecorder
+from aiortc.rtcrtpsender import RTCRtpSender
 # from aiortc.contrib.signaling import BYE, ApprtcSignaling
 
 from aiohttp import web
+
+from pivolution.game import Game
 
 ROOT = os.path.dirname(__file__)
 
@@ -46,8 +47,7 @@ class KeyQueue:
         return [el[0] for el in self._lst]
 
 
-camera_image = np.zeros([480, 640, 3], dtype='uint8')
-camera_image[100:200,300:400] = 127
+camera_image = np.zeros([720, 1280, 3], dtype='uint8')
 pressed_keys = KeyQueue()
 pcs = set()
 
@@ -64,18 +64,21 @@ class VideoImageTrack(VideoStreamTrack):
         global camera_image
         pts, time_base = await self.next_timestamp()
 
-        self.frames_count += 1
-        start = int(np.sin(self.frames_count / 100) * 200)
-        camera_image[:] = 0
-        camera_image[200:300, start + 300: start + 400] = 127
-
         # create video frame
-        frame = VideoFrame.from_ndarray(camera_image, format="bgr24")
+        frame = VideoFrame.from_ndarray(camera_image[:, :, ::-1], format="bgr24")
         frame.pts = pts
         frame.time_base = time_base
 
         return frame
 
+def force_codec(pc, sender, forced_codec):
+    kind = forced_codec.split("/")[0]
+    codecs = RTCRtpSender.getCapabilities(kind).codecs
+    print(codecs)
+    transceiver = next(t for t in pc.getTransceivers() if t.sender == sender)
+    transceiver.setCodecPreferences(
+        [codec for codec in codecs if codec.mimeType == forced_codec]
+    )
 
 async def offer(request):
     params = await request.json()
@@ -116,7 +119,8 @@ async def offer(request):
 
     # Add video track
     video = VideoImageTrack()
-    pc.addTrack(video)
+    video_sender = pc.addTrack(video)
+    # force_codec(pc, video_sender, 'video/H264')
 
     # Add recieving video track
     @pc.on("track")
@@ -143,6 +147,8 @@ async def on_shutdown(app):
 
 
 async def main(args):
+    global camera_image
+
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)
     else:
@@ -162,6 +168,20 @@ async def main(args):
     await runner.setup()
     site = web.TCPSite(runner, host=args.host, port=args.port, ssl_context=ssl_context)
     await site.start()
+
+    game = Game()
+    for i in range(1000):
+        game.spawn()
+    # Main loops:
+    def render_loop():
+        global camera_image
+        while True:
+            camera_image = game.render()
+    def sim_loop():
+        while True:
+            game.step()
+    threading.Thread(target=render_loop).start()
+    threading.Thread(target=sim_loop).start()
 
     while True:
         await asyncio.sleep(3600)  # sleep forever

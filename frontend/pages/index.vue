@@ -1,13 +1,15 @@
 <template>
   <client-only>
-    <Video></Video>
+    <!-- <VideoRTC></VideoRTC> -->
+    <VideoSimple></VideoSimple>
   </client-only>
 </template>
 
 <script>
-import Video from '../components/Video.vue';
+import VideoRTC from '../components/VideoRTC.vue';
+import VideoSimple from '../components/VideoSimple.vue';
 export default {
     name: "IndexPage",
-    components: { Video }
+    components: { VideoRTC, VideoSimple }
 }
 </script>

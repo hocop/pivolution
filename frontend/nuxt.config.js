@@ -74,5 +74,6 @@ export default {
 
   proxy: {
     '/offer': 'http://localhost:8080',
+    '/frame': 'http://localhost:8080',
   }
 }
