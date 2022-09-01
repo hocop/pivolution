@@ -6,6 +6,9 @@ import torch
 from . import networks
 
 
+NUM_FEATURES = 7
+
+
 class Creature(ABC):
     ACTION_NAMES = [
         'nothing',
@@ -20,8 +23,8 @@ class Creature(ABC):
         'nothing': 0.0,
         'go forward': 0.01,
         'go backward': 0.01,
-        'turn right': 0.0,
-        'turn left': 0.0,
+        'turn right': 0.001,
+        'turn left': 0.001,
         'heal': 0.1,
         'reproduce': 0.5,
     }
@@ -41,8 +44,8 @@ class Creature(ABC):
         self.base_color = np.array([self.predatory, (1 - self.predatory), 0])
         self.base_color = (self.base_color / max(self.base_color) * 200).astype('uint8')
 
-        self.gain_from_sun = 0.004 * np.clip(0.5 + 0.5 * self.OMNIVORY - self.predatory, 0, 1) * (2 - self.OMNIVORY)
-        self.gain_from_meat = 0.5 * np.clip(self.predatory - 0.5 + 0.5 * self.OMNIVORY, 0, 1) * (2 - self.OMNIVORY)
+        self.gain_from_sun = 0.002 * np.clip(0.5 + 0.5 * self.OMNIVORY - self.predatory, 0, 1) / (0.5 + 0.5 * self.OMNIVORY)
+        self.gain_from_meat = 0.8 * np.clip(self.predatory - 0.5 + 0.5 * self.OMNIVORY, 0, 1) / (0.5 + 0.5 * self.OMNIVORY)
 
         self.features = None
         self.action = 'nothing'
@@ -54,7 +57,7 @@ class Creature(ABC):
         water_level, air_level, meat_in_this_cell, creature_in_front, local_feats = self.features
 
         # Photosynthesize
-        self.energy += self.gain_from_sun * np.exp(-(water_level * 5 + air_level * 2 + meat_in_this_cell * 5))
+        self.energy += self.gain_from_sun * np.exp(-(water_level * 5 + meat_in_this_cell * 4))
         # Eat meat
         self.energy += self.gain_from_meat * meat_in_this_cell
         self.energy = min(self.energy, 1.0)
@@ -65,8 +68,7 @@ class Creature(ABC):
         # Take action cost
         cost = self.ACTION_COSTS[action]
         if 'go' in action:
-            cost += min(water_level, 0.5)
-            cost = cost * np.exp(-air_level * 2)
+            cost += min(water_level * 0.2, 0.5)
         if cost > self.energy:
             action = 'nothing'
             cost = 0
@@ -89,12 +91,12 @@ class Creature(ABC):
 
         # Heal yourself
         if action == 'heal':
-            self.health = min(self.health + 0.01, 1.0)
+            self.health = min(self.health + 0.05, 1.0)
 
         # Get damage from low energy
         if self.energy < 0.1:
             self.health -= 0.01
-        
+
         # Get damage from age
         self.age += 1
         if self.age > 600 and self.age % 200 == 0:
@@ -114,7 +116,7 @@ class Creature(ABC):
         mutant_mask = np.random.random(size=len(genes)) < 0.01
         mutant_genes = self.completely_new_genes()
         new_genes = genes * (1 - mutant_mask) + mutant_genes * mutant_mask
-        # new_genes = new_genes + np.random.normal(size=len(genes)) * 0.01
+        new_genes = new_genes + np.random.normal(size=len(genes)) * 0.01
         # Create creature
         offspring = type(self)(genes=new_genes)
         return offspring
@@ -138,23 +140,28 @@ class CreatureLinear(Creature):
         return action
 
     def completely_new_genes(self):
-        genes = np.random.normal(size=1 + 6 * 5 * 5 * len(self.ACTION_NAMES) + len(self.ACTION_NAMES))
+        genes = np.random.normal(size=1 + NUM_FEATURES * 5 * 5 * len(self.ACTION_NAMES) + len(self.ACTION_NAMES))
         genes[0] = np.random.random()
         return genes
 
 
-class CreatureNeural2(Creature):
-    def __init__(self, genes=None):
-        hidden_size = 32
-        self.weight_sizes = [1, 6 * 5 * 5 * hidden_size, hidden_size, hidden_size * len(self.ACTION_NAMES), len(self.ACTION_NAMES)]
+class CreatureNeural(Creature):
+    def __init__(self, genes=None, hidden_size=32):
+        self.weight_sizes = [
+            1,                                      # predatory
+            NUM_FEATURES * 5 * 5 * hidden_size,     # layer 1 weights
+            hidden_size,                            # layer 1 bias
+            hidden_size * len(self.ACTION_NAMES),   # layer 2 weights
+            len(self.ACTION_NAMES)                  # layer 2 bias
+        ]
         super().__init__(genes)
         self.weights = np.split(self.genes, np.cumsum(self.weight_sizes))[1:]
         self.weights[0] = self.weights[0].reshape(-1, hidden_size)
         self.weights[0] = self.weights[0] / np.sqrt(self.weights[0].shape[0])
-        self.weights[1] = self.weights[1][None] / 2
+        self.weights[1] = self.weights[1][None] / 10
         self.weights[2] = self.weights[2].reshape(-1, len(self.ACTION_NAMES))
         self.weights[2] = self.weights[2] / np.sqrt(self.weights[2].shape[0])
-        self.weights[3] = self.weights[3][None] / 2
+        self.weights[3] = self.weights[3][None] / 10
 
     def action_from_feats(self, feats):
         feats = feats.flatten()[None]
@@ -163,6 +170,48 @@ class CreatureNeural2(Creature):
         logits = hidden @ self.weights[2] + self.weights[3]
         logits = logits.flatten()
         action = self.ACTION_NAMES[np.argmax(logits)]
+        return action
+
+    def completely_new_genes(self):
+        genes = np.random.normal(size=sum(self.weight_sizes))
+        genes[0] = np.random.random()
+        return genes
+
+
+class CreatureRecurrent(Creature):
+    def __init__(self, genes=None, hidden_size=48, state_size=8):
+        self.state_size = state_size
+        self.weight_sizes = [
+            1,                                                      # predatory
+            (NUM_FEATURES * 5 * 5 + state_size) * hidden_size,      # layer 1 weights
+            hidden_size,                                            # layer 1 bias
+            hidden_size * (len(self.ACTION_NAMES) + state_size * 2),# layer 2 weights
+            len(self.ACTION_NAMES) + state_size * 2                 # layer 2 bias
+        ]
+        super().__init__(genes)
+        self.weights = np.split(self.genes, np.cumsum(self.weight_sizes))[1:]
+        self.weights[0] = self.weights[0].reshape(-1, hidden_size)
+        self.weights[0] = self.weights[0] / np.sqrt(self.weights[0].shape[0])
+        self.weights[1] = self.weights[1][None] / 10
+        self.weights[2] = self.weights[2].reshape(-1, len(self.ACTION_NAMES) + state_size * 2)
+        self.weights[2] = self.weights[2] / np.sqrt(self.weights[2].shape[0])
+        self.weights[3] = self.weights[3][None] / 10
+        self.state = np.zeros(state_size)
+
+    def action_from_feats(self, feats):
+        feats = np.hstack([feats.flatten(), self.state])[None]
+        hidden = feats @ self.weights[0] + self.weights[1]
+        hidden = np.clip(hidden, 0, None)
+        out = hidden @ self.weights[2] + self.weights[3]
+        out = out.flatten()
+        logits = out[:len(self.ACTION_NAMES)]
+        action = self.ACTION_NAMES[np.argmax(logits)]
+
+        state_update = out[len(self.ACTION_NAMES):]
+        gate = np.clip(state_update[:self.state_size], 0, 1)
+        new_state = state_update[self.state_size:]
+        self.state = self.state * gate + new_state * (1 - gate)
+
         return action
 
     def completely_new_genes(self):
@@ -180,26 +229,4 @@ class CreatureRandom(Creature):
         genes = np.random.random(size=1 + len(self.ACTION_NAMES))
         genes = np.clip(genes, 0, None)
         genes[1:] = genes[1:] / genes[1:].sum()
-        return genes
-
-
-class CreatureNeural(Creature):
-    def __init__(self, genes=None):
-        self.net = networks.CNN(6, 5, len(self.ACTION_NAMES))
-        super().__init__(genes)
-        networks.set_params(self.net, self.genes[1:])
-        self.net = torch.jit.trace(self.net, torch.randn([1, 6, 5, 5]))
-
-    def action_from_feats(self, feats):
-        feats = torch.tensor(feats[None].copy(), dtype=torch.float)
-        logits = self.net(feats).numpy().flatten()
-        action = self.ACTION_NAMES[np.argmax(logits)]
-        return action
-
-    def completely_new_genes(self):
-        params = networks.get_vector(self.net)
-        genes = np.concatenate([
-            np.random.random(size=1),
-            params,
-        ], 0)
         return genes

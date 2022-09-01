@@ -3,10 +3,10 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import time
 from numba import njit
-import multiprocessing
 from perlin_noise import PerlinNoise
+import scipy
 
-from .creature import CreatureRandom, CreatureLinear, CreatureNeural, CreatureNeural2
+from .creature import CreatureRandom, CreatureLinear, CreatureNeural, CreatureRecurrent
 
 
 class Game:
@@ -23,7 +23,7 @@ class Game:
         np.random.seed(seed)
 
         # Elevation map
-        self.elevation_map = self.generate_elevation(map_seed)
+        self.elevation_map, self.walls_map = self.generate_elevation_and_walls(map_seed)
         self.water_depth_map = np.clip(-self.elevation_map, 0, None)
 
         # Some maps
@@ -38,6 +38,25 @@ class Game:
         # Time stamps
         self.previous_render_time = time.time()
         self.previous_step_time = time.time()
+
+        # Pre-render
+        # Draw elevation
+        elev_min, elev_max = -2, 2
+        image = (self.elevation_map.clip(elev_min, elev_max) - elev_min) / (elev_max - elev_min)
+        image = (image * 255).astype('uint8')
+        image = np.repeat(image[:, :, None], 3, 2)
+        # Draw walls
+        image = (image * (1 - self.walls_map[:, :, None] * 0.5)).astype('uint8')
+        # Draw water
+        water_color = (-self.elevation_map * 127).clip(0, 75)
+        water_image = np.zeros_like(image)
+        water_image[:, :, 0] = 75 - water_color
+        water_image[:, :, 1] = 75 - water_color
+        water_image[:, :, 2] = 127
+        water_mask = self.elevation_map < 0
+        image[water_mask] = water_image[water_mask]
+        # Save image
+        self.landscape_image = image
         
 
     def render(self, camera_x=None, camera_y=None, scale=4):
@@ -49,23 +68,10 @@ class Game:
         if camera_y is None:
             camera_y = self.map_h // 2
         crop = [camera_y - self.render_h // 2 // scale, camera_y + self.render_h // 2 // scale, camera_x - self.render_w // 2 // scale, camera_x + self.render_w // 2 // scale]
-        elevation = pad_and_crop(self.elevation_map, *crop)
-        creature_id_map = pad_and_crop(self.creature_id_map, *crop, padding=-1)
+        image = pad_and_crop(self.landscape_image, *crop).copy()
+        creature_id_map = pad_and_crop(self.creature_id_map, *crop, cval=-1)
         meat_map = pad_and_crop(self.meat_map, *crop)
 
-        # Draw elevation
-        elev_min, elev_max = -2, 2
-        image = (elevation.clip(elev_min, elev_max) - elev_min) / (elev_max - elev_min)
-        image = (image * 255).astype('uint8')
-        image = np.repeat(image[:, :, None], 3, 2)
-        # Draw water
-        water_color = (-elevation * 127).clip(0, 75)
-        water_image = np.zeros_like(image)
-        water_image[:, :, 0] = 75 - water_color
-        water_image[:, :, 1] = 75 - water_color
-        water_image[:, :, 2] = 127
-        water_mask = elevation < 0
-        image[water_mask] = water_image[water_mask]
         # Draw meat
         meat_image = np.zeros_like(image)
         meat_mask = np.clip(meat_map, 0, 1)
@@ -73,18 +79,42 @@ class Game:
         meat_image[:, :, 1] = 0
         meat_image[:, :, 2] = 255 * meat_mask
         image = (image * (1 - meat_mask[:, :, None]) + meat_image * meat_mask[:, :, None]).astype('uint8')
+        # Get creature coords and colors
+        arr_pos_x, arr_pos_y, arr_angle, arr_color = [], [], [], []
+        for idx in np.unique(creature_id_map):
+            if idx < 0 or self.creatures[idx] is None:
+                continue
+            creature, pos_x, pos_y, angle = self.creatures[idx]
+            pos_x, pos_y = self.global_to_camera(pos_x, pos_y, camera_x, camera_y, scale)
+            arr_pos_x.append(pos_x)
+            arr_pos_y.append(pos_y)
+            arr_angle.append(angle)
+            arr_color.append(creature.color)
+        arr_pos_x, arr_pos_y, arr_angle, arr_color = map(np.array, [arr_pos_x, arr_pos_y, arr_angle, arr_color])
         # Draw creatures
-        if scale < 5:
-            for idx in np.unique(creature_id_map):
-                if idx < 0 or self.creatures[idx] is None:
-                    continue
-                creature, pos_x, pos_y, angle = self.creatures[idx]
-                pos_x, pos_y = self.global_to_camera(pos_x, pos_y, camera_x, camera_y, scale)
-                if pos_x >= 0 and pos_y >= 0 and pos_x < image.shape[1] and pos_y < image.shape[0]:
-                    image[pos_y, pos_x, :] = creature.color
+        image[arr_pos_y, arr_pos_x] = arr_color
         # Resize image
         image = np.repeat(image, scale, 0)
         image = np.repeat(image, scale, 1)
+        # Draw creature faces
+        face_color = 255 - arr_color[:, 1:2]
+        if scale >= 3:
+            mask = arr_angle == 0
+            pos_x, pos_y, color = arr_pos_x[mask], arr_pos_y[mask], face_color[mask]
+            for i in range(1, scale - 1):
+                image[pos_y * scale + i, pos_x * scale + scale - 1] = color
+            mask = arr_angle == 1
+            pos_x, pos_y, color = arr_pos_x[mask], arr_pos_y[mask], face_color[mask]
+            for j in range(1, scale - 1):
+                image[pos_y * scale + scale - 1, pos_x * scale + j] = color
+            mask = arr_angle == 2
+            pos_x, pos_y, color = arr_pos_x[mask], arr_pos_y[mask], face_color[mask]
+            for i in range(1, scale - 1):
+                image[pos_y * scale + i, pos_x * scale] = color
+            mask = arr_angle == 3
+            pos_x, pos_y, color = arr_pos_x[mask], arr_pos_y[mask], face_color[mask]
+            for j in range(1, scale - 1):
+                image[pos_y * scale, pos_x * scale + j] = color
 
         elapsed = time.time() - self.previous_render_time
         if elapsed < self.min_seconds_per_render:
@@ -100,13 +130,6 @@ class Game:
         left = camera_x - self.render_w // 2 // scale
         top = camera_y - self.render_h // 2 // scale
         return pos_x - left, pos_y - top
-
-    @staticmethod
-    def compute_action(creature):
-        if creature is None:
-            return
-        creature[0].compute_action()
-        return creature
 
     def step(self):
         start = time.time()
@@ -146,7 +169,7 @@ class Game:
             # Get local features
             local_feats = np.concatenate([
                 pad_and_crop(feat_map, pos_y - 2, pos_y + 3, pos_x - 2, pos_x + 3)[None]
-                for feat_map in [predatory_map, energy_map, health_map, direction_map, self.water_depth_map, self.meat_map]
+                for feat_map in [predatory_map, energy_map, health_map, direction_map, self.water_depth_map, self.walls_map, self.meat_map]
             ], 0)
             local_feats = self.rotate_feats(local_feats, angle)
             # Set features
@@ -159,8 +182,6 @@ class Game:
                 continue
             creature = self.creatures[idx][0]
             creature.compute_action()
-        # with multiprocessing.Pool() as pool:
-        #     self.creatures = pool.map(self.compute_action, self.creatures)
         end_actions = time.time()
 
         # Remove deadge
@@ -172,7 +193,7 @@ class Game:
             if creature.health <= 0:
                 if self.creature_id_map[pos_y, pos_x] == idx:
                     self.creature_id_map[pos_y, pos_x] = -1
-                meat = max(0.05, creature.energy) * (1 - creature.predatory)
+                meat = 0.25 * (1 - creature.predatory)
                 self.meat_map[pos_y, pos_x] = min(4.0, self.meat_map[pos_y, pos_x] + meat)
                 self.dead_creatures_ids.append(idx)
                 self.creatures[idx] = None
@@ -205,14 +226,8 @@ class Game:
                 direction = 1 if action == 'go forward' else -1
                 new_pos_x, new_pos_y = self.get_cell_in_front(pos_x, pos_y, angle, direction)
                 # Boundaries
-                if new_pos_x < 0:
-                    new_pos_x = 0
-                if new_pos_y < 0:
-                    new_pos_y = 0
-                if new_pos_x >= self.map_w:
-                    new_pos_x = self.map_w - 1
-                if new_pos_y >= self.map_h:
-                    new_pos_y = self.map_h - 1
+                if not(self.is_valid_coords(new_pos_x, new_pos_y)):
+                    new_pos_x, new_pos_y = pos_x, pos_y
                 # Check collision
                 go_id = self.creature_id_map[new_pos_y, new_pos_x]
                 if go_id >= 0 and self.creatures[go_id] is not None:
@@ -254,13 +269,18 @@ class Game:
     def spawn(self, pos_x=None, pos_y=None, angle=None, creature=None):
         # Generate random
         if pos_x is None:
-            pos_x = np.random.randint(self.map_w)
+            assert pos_y is None
         if pos_y is None:
+            assert pos_x is None
+            pos_x = np.random.randint(self.map_w)
             pos_y = np.random.randint(self.map_h)
+            while(self.walls_map[pos_y, pos_x]):
+                pos_x = np.random.randint(self.map_w)
+                pos_y = np.random.randint(self.map_h)
         if angle is None:
             angle = np.random.randint(4)
         if creature is None:
-            creature = CreatureNeural2()
+            creature = CreatureRecurrent()
 
         # Find index with None value
         new_idx = None
@@ -281,7 +301,7 @@ class Game:
             self.creatures[new_idx] = [creature, pos_x, pos_y, angle]
             self.creature_id_map[pos_y, pos_x] = new_idx
 
-    def generate_elevation(self, seed):
+    def generate_elevation_and_walls(self, seed):
         print('Generating map...')
         scale = max(self.map_h, self.map_w)
         noise1 = PerlinNoise(octaves=scale//80, seed=seed)
@@ -301,7 +321,13 @@ class Game:
             elevation.append(row)
         elevation = np.array(elevation)
         print('elevation', elevation.shape)
-        return elevation
+
+        grad_y = scipy.ndimage.sobel(elevation, axis=0)
+        grad_x = scipy.ndimage.sobel(elevation, axis=1)
+        walls = (grad_x**2 + grad_y**2) > 0.05
+        walls = scipy.ndimage.binary_erosion(walls, iterations=2)
+
+        return elevation, walls
 
 
     def get_cell_in_front(self, pos_x, pos_y, angle, direction=1):
@@ -317,22 +343,22 @@ class Game:
         return new_pos_x, new_pos_y
     
     def is_valid_coords(self, pos_x, pos_y):
-        return pos_x >= 0 and pos_x < self.map_w and pos_y >= 0 and pos_y < self.map_h
+        return pos_x >= 0 and pos_x < self.map_w and pos_y >= 0 and pos_y < self.map_h and not self.walls_map[pos_y, pos_x]
 
 
-def pad_and_crop(img, hs, he, ws, we, padding=0):
+def pad_and_crop(img, hs, he, ws, we, cval=0):
     # Pad
     if hs < 0:
-        img = np.concatenate([np.full([-hs, img.shape[1]], padding, dtype=img.dtype), img], 0)
+        img = np.concatenate([np.full([-hs, img.shape[1]], cval, dtype=img.dtype), img], 0)
         he = he - hs
         hs = 0
     if ws < 0:
-        img = np.concatenate([np.full([img.shape[0], -ws], padding, dtype=img.dtype), img], 1)
+        img = np.concatenate([np.full([img.shape[0], -ws], cval, dtype=img.dtype), img], 1)
         we = we - ws
         ws = 0
     if he > img.shape[0]:
-        img = np.concatenate([img, np.full([he - img.shape[0], img.shape[1]], padding, dtype=img.dtype)], 0)
+        img = np.concatenate([img, np.full([he - img.shape[0], img.shape[1]], cval, dtype=img.dtype)], 0)
     if we > img.shape[1]:
-        img = np.concatenate([img, np.full([img.shape[0], we - img.shape[1]], padding, dtype=img.dtype)], 1)
+        img = np.concatenate([img, np.full([img.shape[0], we - img.shape[1]], cval, dtype=img.dtype)], 1)
     # Crop
     return img[hs: he, ws: we]
