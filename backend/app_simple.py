@@ -1,5 +1,6 @@
 """my_controller controller."""
 
+import pickle
 import numpy as np
 import argparse
 import asyncio
@@ -17,10 +18,10 @@ from av import VideoFrame
 from aiohttp import web
 from io import BytesIO
 
+from pivolution.creature import CreatureGendered
 from pivolution.game import Game
 
 
-game = Game()
 camera_image = np.zeros([100, 100, 3], dtype='uint8')
 
 
@@ -52,8 +53,24 @@ async def main(args):
     site = web.TCPSite(runner, host=args.host, port=args.port, ssl_context=ssl_context)
     await site.start()
 
-    for i in range(1000):
-        game.spawn()
+    if args.load_from is not None:
+        with open(args.load_from, 'rb') as handle:
+            game = pickle.load(handle)
+    else:
+        game = Game()
+        # Spawn initial population
+        for i in range(5000):
+            game.spawn()
+
+        # for i in range(0, game.map_h, 5):
+        #     for j in range(0, game.map_w, 3):
+        #         creature0 = CreatureGendered()
+        #         for pos_y in range(i, i + 2):
+        #             for pos_x in range(j, j + 1):
+        #                 gender = 'boy' if pos_x % 2 == 0 else 'girl'
+        #                 creature = CreatureGendered(genes=creature0.genes.copy(), gender=gender)
+        #                 game.spawn(creature, pos_x, pos_y)
+
     # Main loops:
     def render_loop():
         global camera_image
@@ -74,7 +91,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="WebRTC webcam demo")
     parser.add_argument("--cert-file", help="SSL certificate file (for HTTPS)")
     parser.add_argument("--key-file", help="SSL key file (for HTTPS)")
-    parser.add_argument("--play-from", help="Read the media from a file and sent it.")
+    parser.add_argument("--load_from", type=str, default=None, help="Load game from restart file")
     parser.add_argument(
         "--host", default="0.0.0.0", help="Host for HTTP server (default: 0.0.0.0)"
     )

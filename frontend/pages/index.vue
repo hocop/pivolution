@@ -1,8 +1,16 @@
 <template>
+  <v-container>
   <client-only>
-    <!-- <VideoRTC></VideoRTC> -->
     <VideoSimple></VideoSimple>
   </client-only>
+  <v-navigation-drawer
+    absolute
+    permanent
+    right
+  >
+
+  </v-navigation-drawer>
+  </v-container>
 </template>
 
 <script>

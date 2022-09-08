@@ -1,3 +1,5 @@
+from fileinput import filename
+import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
@@ -6,7 +8,8 @@ from numba import njit
 from perlin_noise import PerlinNoise
 import scipy
 
-from .creature import CreatureRandom, CreatureLinear, CreatureNeural, CreatureRecurrent
+from .creature import CreatureRandom, CreatureLinear, CreatureNeural, CreatureRecurrent, CreatureGendered
+from .creature import FEAT_WINDOW
 
 
 class Game:
@@ -20,6 +23,7 @@ class Game:
 
         self.info = {}
         self.rendering = False
+        self.steps_count = 0
         np.random.seed(seed)
 
         # Elevation map
@@ -68,19 +72,18 @@ class Game:
         if camera_y is None:
             camera_y = self.map_h // 2
         crop = [camera_y - self.render_h // 2 // scale, camera_y + self.render_h // 2 // scale, camera_x - self.render_w // 2 // scale, camera_x + self.render_w // 2 // scale]
-        image = pad_and_crop(self.landscape_image, *crop).copy()
-        creature_id_map = pad_and_crop(self.creature_id_map, *crop, cval=-1)
-        meat_map = pad_and_crop(self.meat_map, *crop)
+        image = crop_and_pad(self.landscape_image, *crop).copy()
+        creature_id_map = crop_and_pad(self.creature_id_map, *crop, cval=-1)
+        meat_map = crop_and_pad(self.meat_map, *crop)
 
         # Draw meat
         meat_image = np.zeros_like(image)
         meat_mask = np.clip(meat_map, 0, 1)
         meat_image[:, :, 0] = 200 * meat_mask
-        meat_image[:, :, 1] = 0
         meat_image[:, :, 2] = 255 * meat_mask
         image = (image * (1 - meat_mask[:, :, None]) + meat_image * meat_mask[:, :, None]).astype('uint8')
         # Get creature coords and colors
-        arr_pos_x, arr_pos_y, arr_angle, arr_color = [], [], [], []
+        arr_pos_x, arr_pos_y, arr_angle, arr_color, arr_face_color, arr_mid_color = [], [], [], [], [], []
         for idx in np.unique(creature_id_map):
             if idx < 0 or self.creatures[idx] is None:
                 continue
@@ -90,37 +93,48 @@ class Game:
             arr_pos_y.append(pos_y)
             arr_angle.append(angle)
             arr_color.append(creature.color)
-        arr_pos_x, arr_pos_y, arr_angle, arr_color = map(np.array, [arr_pos_x, arr_pos_y, arr_angle, arr_color])
+            arr_face_color.append(creature.face_color)
+            arr_mid_color.append(creature.middle_color)
+        arr_pos_x, arr_pos_y, arr_angle, arr_color, arr_face_color = map(np.array, [arr_pos_x, arr_pos_y, arr_angle, arr_color, arr_face_color])
         # Draw creatures
-        image[arr_pos_y, arr_pos_x] = arr_color
+        if len(arr_color) > 0:
+            image[arr_pos_y, arr_pos_x] = arr_color
         # Resize image
         image = np.repeat(image, scale, 0)
         image = np.repeat(image, scale, 1)
         # Draw creature faces
-        face_color = 255 - arr_color[:, 1:2]
-        if scale >= 3:
+        if scale >= 2 and len(arr_color) > 0:
             mask = arr_angle == 0
-            pos_x, pos_y, color = arr_pos_x[mask], arr_pos_y[mask], face_color[mask]
-            for i in range(1, scale - 1):
+            pos_x, pos_y, color = arr_pos_x[mask], arr_pos_y[mask], arr_face_color[mask]
+            for i in range(scale):
                 image[pos_y * scale + i, pos_x * scale + scale - 1] = color
             mask = arr_angle == 1
-            pos_x, pos_y, color = arr_pos_x[mask], arr_pos_y[mask], face_color[mask]
-            for j in range(1, scale - 1):
+            pos_x, pos_y, color = arr_pos_x[mask], arr_pos_y[mask], arr_face_color[mask]
+            for j in range(scale):
                 image[pos_y * scale + scale - 1, pos_x * scale + j] = color
             mask = arr_angle == 2
-            pos_x, pos_y, color = arr_pos_x[mask], arr_pos_y[mask], face_color[mask]
-            for i in range(1, scale - 1):
+            pos_x, pos_y, color = arr_pos_x[mask], arr_pos_y[mask], arr_face_color[mask]
+            for i in range(scale):
                 image[pos_y * scale + i, pos_x * scale] = color
             mask = arr_angle == 3
-            pos_x, pos_y, color = arr_pos_x[mask], arr_pos_y[mask], face_color[mask]
-            for j in range(1, scale - 1):
+            pos_x, pos_y, color = arr_pos_x[mask], arr_pos_y[mask], arr_face_color[mask]
+            for j in range(scale):
                 image[pos_y * scale, pos_x * scale + j] = color
+        # Draw middle points
+        has_mid = np.array([mc is not None for mc in arr_mid_color])
+        arr_mid_color = np.array([mc for mc in arr_mid_color if mc is not None])
+        pos_x, pos_y = arr_pos_x[has_mid], arr_pos_y[has_mid]
+        a, b = scale // 2 - 1, scale // 2 + 1
+        if scale >= 2 and np.sum(has_mid) > 0:
+            for i in range(a, b):
+                for j in range(a, b):
+                    image[pos_y * scale + i, pos_x * scale + j] = arr_mid_color
 
         elapsed = time.time() - self.previous_render_time
         if elapsed < self.min_seconds_per_render:
             time.sleep(self.min_seconds_per_render - elapsed)
         self.info['render_freq'] = int(1. / (time.time() - self.previous_render_time))
-        self.info['ns_render'] = int((time.time() - start) * 1e6 / (self.num_creatures + 1))
+        self.info['μs_render'] = int((time.time() - start) * 1e6 / (self.num_creatures + 1))
         print(self.info)
         self.previous_render_time = time.time()
         self.rendering = False
@@ -139,6 +153,7 @@ class Game:
         energy_map = np.full([self.map_h, self.map_w], -1)
         health_map = np.full([self.map_h, self.map_w], -1)
         direction_map = np.full([self.map_h, self.map_w], 0)
+        gender_map = np.full([self.map_h, self.map_w], -1)
         for idx in range(len(self.creatures)):
             if self.creatures[idx] is None:
                 continue
@@ -146,11 +161,15 @@ class Game:
             predatory_map[pos_y, pos_x] = creature.predatory
             energy_map[pos_y, pos_x] = creature.energy
             health_map[pos_y, pos_x] = creature.health
+            if isinstance(creature, CreatureGendered):
+                gender_map[pos_y, pos_x] = 0 if creature.gender == 'boy' else 1
             front_x, front_y = self.get_cell_in_front(pos_x, pos_y, angle)
             if self.is_valid_coords(front_x, front_y):
                 direction_map[front_y, front_x] = 1
 
         # Get features
+        win_left = FEAT_WINDOW // 2
+        win_right = FEAT_WINDOW // 2 + 1
         for idx in range(len(self.creatures)):
             if self.creatures[idx] is None:
                 continue
@@ -168,8 +187,8 @@ class Game:
                     creature_in_front = self.creatures[front_idx][0]
             # Get local features
             local_feats = np.concatenate([
-                pad_and_crop(feat_map, pos_y - 2, pos_y + 3, pos_x - 2, pos_x + 3)[None]
-                for feat_map in [predatory_map, energy_map, health_map, direction_map, self.water_depth_map, self.walls_map, self.meat_map]
+                crop_and_pad(feat_map, pos_y - win_left, pos_y + win_right, pos_x - win_left, pos_x + win_right)[None]
+                for feat_map in [predatory_map, energy_map, health_map, direction_map, gender_map, self.water_depth_map, self.walls_map, self.meat_map]
             ], 0)
             local_feats = self.rotate_feats(local_feats, angle)
             # Set features
@@ -219,7 +238,9 @@ class Game:
                     behind_idx = self.creature_id_map[spawn_y, spawn_x]
                     if behind_idx < 0 or self.creatures[behind_idx] is None:
                         # Spawn new creature
-                        self.spawn(spawn_x, spawn_y, spawn_angle, creature.get_offspring())
+                        offspring = creature.reproduce()
+                        if offspring is not None:
+                            self.spawn(offspring, spawn_x, spawn_y, spawn_angle)
             # Go forward or backward
             new_pos_x, new_pos_y, new_angle = pos_x, pos_y, angle
             if 'go' in action:
@@ -257,6 +278,13 @@ class Game:
         self.info['num_creatures'] = num_creatures
         self.previous_step_time = time.time()
 
+        if self.steps_count % (3600 * 3) == 0:
+            fname = f'world_{self.steps_count:08n}.pickle'
+            with open(fname, 'wb') as handle:
+                pickle.dump(self, handle, protocol=pickle.HIGHEST_PROTOCOL)
+                print('Saved as', fname)
+        self.steps_count += 1
+
     def rotate_feats(self, feats, angle):
         if angle == 1:
             feats = feats.transpose(0, 2, 1)[:, ::-1]
@@ -266,7 +294,7 @@ class Game:
             feats = feats.transpose(0, 2, 1)[:, :, ::-1]
         return feats
 
-    def spawn(self, pos_x=None, pos_y=None, angle=None, creature=None):
+    def spawn(self, creature=None, pos_x=None, pos_y=None, angle=None):
         # Generate random
         if pos_x is None:
             assert pos_y is None
@@ -280,7 +308,7 @@ class Game:
         if angle is None:
             angle = np.random.randint(4)
         if creature is None:
-            creature = CreatureRecurrent()
+            creature = CreatureGendered()
 
         # Find index with None value
         new_idx = None
@@ -362,3 +390,35 @@ def pad_and_crop(img, hs, he, ws, we, cval=0):
         img = np.concatenate([img, np.full([img.shape[0], we - img.shape[1]], cval, dtype=img.dtype)], 1)
     # Crop
     return img[hs: he, ws: we]
+
+
+# @njit
+def crop_and_pad(img, hs, he, ws, we, cval=0):
+    # Crop
+    hs_real = hs
+    if hs < 0:
+        hs_real = 0
+    he_real = he
+    if he > img.shape[0]:
+        he_real = img.shape[0]
+    ws_real = ws
+    if ws < 0:
+        ws_real = 0
+    we_real = we
+    if we > img.shape[1]:
+        we_real = img.shape[1]
+    img = img[hs_real: he_real, ws_real: we_real]
+    # Pad
+    if hs < 0:
+        pad = np.full((-hs, *img.shape[1:]), cval, dtype=img.dtype)
+        img = np.concatenate((pad, img), 0)
+    if ws < 0:
+        pad = np.full((img.shape[0], -ws, *img.shape[2:]), cval, dtype=img.dtype)
+        img = np.concatenate((pad, img), 1)
+    if he > he_real:
+        pad = np.full((he - he_real, *img.shape[1:]), cval, dtype=img.dtype)
+        img = np.concatenate((img, pad), 0)
+    if we > we_real:
+        pad = np.full((img.shape[0], we - we_real, *img.shape[2:]), cval, dtype=img.dtype)
+        img = np.concatenate((img, pad), 1)
+    return img

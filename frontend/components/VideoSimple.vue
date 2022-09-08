@@ -12,17 +12,17 @@ export default {
   filters: {},
 
   mounted() {
-    setInterval(
-      () => {
-        fetch('/frame', {method: 'POST'})
-        .then(response => response.blob())
-        .then(imageBlob => {
+    const imgReload = () => {
+      fetch('/frame', {method: 'POST'})
+      .then(response => response.blob())
+      .then(imageBlob => {
           const imageObjectURL = URL.createObjectURL(imageBlob);
           this.$refs.video.src = imageObjectURL
-        });
-      },
-      100
-    )
+      })
+      .then(() => setTimeout(imgReload, 10))
+    }
+
+    imgReload()
   },
 
   destroyed() {
