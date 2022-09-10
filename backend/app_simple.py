@@ -59,7 +59,7 @@ async def main(args):
     else:
         game = Game()
         # Spawn initial population
-        for i in range(5000):
+        for i in range(10000):
             game.spawn()
 
         # for i in range(0, game.map_h, 5):

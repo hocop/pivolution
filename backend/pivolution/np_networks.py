@@ -57,7 +57,7 @@ class Recurrent:
         out = self.net.forward(feats)
 
         state_update = out[self.n_outputs:]
-        gate = np.clip(state_update[:len(self.state)], 0, 1)
+        gate = np.clip(state_update[:len(self.state)] + 0.5, 0, 1)
         new_state = state_update[len(self.state):]
         self.state = self.state * gate + new_state * (1 - gate)
 

@@ -16,7 +16,6 @@ class Creature(ABC):
         'go backward',
         'turn right',
         'turn left',
-        'heal',
         'reproduce',
     ]
     ACTION_COSTS = {
@@ -25,8 +24,8 @@ class Creature(ABC):
         'go backward': 0.001,
         'turn right': 0.001,
         'turn left': 0.001,
-        'heal': 0.1,
         'reproduce': 0.5,
+        'attack': 0.1 * 16/20 * 0.1 * (5 + 2.5),
     }
     OMNIVORY = 1/3
 
@@ -34,8 +33,8 @@ class Creature(ABC):
         self.health = 1.0
         self.energy = 0.25
         self.age = 0
-        self.healing_efficiency = 0.05
         self.action_costs = copy.deepcopy(self.ACTION_COSTS)
+        self.healing_efficiency = 0.01 * 0.25
 
         if genes is None:
             self.genes = self.completely_new_genes()
@@ -48,9 +47,8 @@ class Creature(ABC):
 
         self.gain_from_sun = np.clip(0.5 + 0.5 * self.OMNIVORY - self.predatory, 0, 1) / (0.5 + 0.5 * self.OMNIVORY)
         self.gain_from_meat = np.clip(self.predatory - 0.5 + 0.5 * self.OMNIVORY, 0, 1) / (0.5 + 0.5 * self.OMNIVORY)
-        sum_gain = self.gain_from_sun + self.gain_from_meat
-        self.gain_from_sun = 0.002 * self.gain_from_sun / sum_gain
-        self.gain_from_meat = 0.8 * self.gain_from_meat / sum_gain
+        self.gain_from_sun = 0.002 * self.gain_from_sun
+        self.gain_from_meat = 0.8 * (self.gain_from_meat > 0)
 
         self.features = None
         self.action = 'nothing'
@@ -70,10 +68,9 @@ class Creature(ABC):
         # Get action
         action = self.action_from_feats(local_feats)
 
-        # Check if can reproduce
-        if action == 'reproduce':
-            if self.health < 0.5:
-                action = 'nothing'
+        # Check if action is attack
+        if action == 'go forward' and creature_in_front is not None:
+            action = 'attack'
 
         # Take action cost
         cost = self.action_costs[action]
@@ -86,11 +83,11 @@ class Creature(ABC):
             self.energy = self.energy - cost
 
         # Kick someone's ass (D&D rules)
-        if action == 'go forward' and creature_in_front is not None:
+        if action == 'attack':
             # Compute hit or miss
-            strength = 5 * self.predatory
+            strength = int(np.round(5 * self.predatory))
             armor_class = 10 + creature_in_front.predatory * 2
-            roll = 1 + np.random.randint(1, 21) + strength
+            roll = np.random.randint(1, 21) + strength
             hit = roll >= armor_class
             crit = roll == 20
             if hit:
@@ -102,15 +99,14 @@ class Creature(ABC):
                 creature_in_front.health = creature_in_front.health - dmg * 0.1
 
         # Heal yourself
-        if action == 'heal':
-            self.health = min(self.health + self.healing_efficiency, 1.0)
+        self.health = min(self.health + self.healing_efficiency, 1.0)
 
         # Get damage from age
         self.age += 1
-        if self.age > 300 and self.age % 100 == 0:
+        if self.age > 0 and self.age % 100 == 0:
             dmg = np.random.randint(1, 5)
             self.health -= dmg * 0.1
-            self.healing_efficiency = self.healing_efficiency * 0.9
+            self.healing_efficiency = self.healing_efficiency * 0.5
 
         self.action = action
 
@@ -231,14 +227,16 @@ class CreatureGendered(Creature):
             self.genes_b = self.genes_a
 
         # Merge genes
-        genes = np.empty_like(self.genes_a)
-        # There are 3 major genes: "predatory", "boy_prob" and "boy_reproduce_cost"
-        n_major = 3
-        # Average between major genes
-        genes[:n_major] = 0.5 * (self.genes_a[:n_major] + self.genes_b[:n_major])
-        # For neural genes, take lesser weight as dominant
-        dominant_mask = np.abs(self.genes_a[n_major:]) < np.abs(self.genes_b[n_major:])
-        genes[n_major:] = dominant_mask * self.genes_a[n_major:] + (1 - dominant_mask) * self.genes_b[n_major:]
+        # genes = np.empty_like(self.genes_a)
+        # # There are 3 major genes: "predatory", "boy_prob" and "boy_reproduce_cost"
+        # n_major = 3
+        # # Average between major genes
+        # genes[:n_major] = 0.5 * (self.genes_a[:n_major] + self.genes_b[:n_major])
+        # # For neural genes, take lesser weight as dominant
+        # dominant_mask = np.abs(self.genes_a[n_major:]) < np.abs(self.genes_b[n_major:])
+        # genes[n_major:] = dominant_mask * self.genes_a[n_major:] + (1 - dominant_mask) * self.genes_b[n_major:]
+
+        genes = 0.5 * (self.genes_a + self.genes_b)
 
         super().__init__(genes)
 
