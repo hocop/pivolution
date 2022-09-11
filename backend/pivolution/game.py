@@ -17,7 +17,7 @@ WORLD_MARGIN = 2
 
 
 class Game:
-    def __init__(self, map_h=720//4, map_w=1280//4, default_scale=4, seed=43, map_seed=42, subworld_id=None):
+    def __init__(self, map_h=720//4, map_w=1280//4, default_scale=4, seed=43, map_seed=42, subworld_id=None, elevation=None):
         self.map_h = map_h
         self.map_w = map_w
         self.default_scale = default_scale
@@ -34,7 +34,7 @@ class Game:
         np.random.seed(seed)
 
         # Elevation map
-        self.elevation_map, self.walls_map = self.generate_elevation_and_walls(map_seed)
+        self.elevation_map, self.walls_map = self.generate_elevation_and_walls(map_seed, elevation)
         self.water_depth_map = np.clip(-self.elevation_map, 0, None)
 
         # Some maps
@@ -55,21 +55,21 @@ class Game:
         # Draw elevation
         elev_min, elev_max = -2, 2
         image = (self.elevation_map.clip(elev_min, elev_max) - elev_min) / (elev_max - elev_min)
-        image = (image * 255).astype('uint8')
+        image = image * 255
         image = np.repeat(image[:, :, None], 3, 2)
         # Draw walls
-        image = (image * (1 - self.walls_map[:, :, None] * 0.5)).astype('uint8')
+        image = image * (1 - self.walls_map[:, :, None] * 0.5)
         # Draw water
-        water_color = (-self.elevation_map * 127).clip(0, 75)
+        water_alpha = (-self.elevation_map + 0.4).clip(0, 1) * (self.elevation_map < 0)
+        water_alpha = water_alpha[:, :, None]
         water_image = np.zeros_like(image)
-        water_image[:, :, 0] = 75 - water_color
-        water_image[:, :, 1] = 75 - water_color
+        water_image[:, :, 0] = 0
+        water_image[:, :, 1] = 0
         water_image[:, :, 2] = 127
-        water_mask = self.elevation_map < 0
-        image[water_mask] = water_image[water_mask]
+        image = image * (1 - water_alpha) + water_image * water_alpha
         # Save image
-        self.landscape_image = image
-        
+        self.landscape_image = image.astype('uint8')
+
 
     def render(self, camera_x=None, camera_y=None, scale=None):
         start = time.time()
@@ -450,26 +450,9 @@ class Game:
         # Remove portals
         self.portals = {}
 
-    def generate_elevation_and_walls(self, seed):
-        print('Generating map...')
-        scale = max(self.map_h, self.map_w)
-        noise1 = PerlinNoise(octaves=scale//80, seed=seed)
-        noise2 = PerlinNoise(octaves=scale//40, seed=seed)
-        noise3 = PerlinNoise(octaves=scale//20, seed=seed)
-        noise4 = PerlinNoise(octaves=scale//10, seed=seed)
-        elevation = []
-        for i in range(self.map_h):
-            row = []
-            for j in range(self.map_w):
-                noise_val = noise1([i / scale, j / scale])
-                noise_val += 0.5 * noise2([i / scale, j / scale])
-                noise_val += 0.25 * noise3([i / scale, j / scale])
-                noise_val += 0.125 * noise4([i / scale, j / scale])
-
-                row.append(noise_val)
-            elevation.append(row)
-        elevation = np.array(elevation)
-        print('elevation', elevation.shape)
+    def generate_elevation_and_walls(self, seed, elevation=None):
+        if elevation is None:
+            elevation = generate_elevation(self.map_h, self.map_w, seed)
 
         grad_y = scipy.ndimage.sobel(elevation, axis=0)
         grad_x = scipy.ndimage.sobel(elevation, axis=1)
@@ -493,6 +476,31 @@ class Game:
     
     def is_valid_coords(self, pos_x, pos_y):
         return pos_x >= 0 and pos_x < self.map_w and pos_y >= 0 and pos_y < self.map_h and not self.walls_map[pos_y, pos_x]
+
+
+
+def generate_elevation(map_h, map_w, seed):
+    print('Generating map...')
+    scale = max(map_h, map_w)
+    noise1 = PerlinNoise(octaves=scale//80, seed=seed)
+    noise2 = PerlinNoise(octaves=scale//40, seed=seed)
+    noise3 = PerlinNoise(octaves=scale//20, seed=seed)
+    noise4 = PerlinNoise(octaves=scale//10, seed=seed)
+    elevation = []
+    for i in range(map_h):
+        row = []
+        for j in range(map_w):
+            noise_val = noise1([i / scale, j / scale])
+            noise_val += 0.5 * noise2([i / scale, j / scale])
+            noise_val += 0.25 * noise3([i / scale, j / scale])
+            noise_val += 0.125 * noise4([i / scale, j / scale])
+
+            row.append(noise_val)
+        elevation.append(row)
+    elevation = np.array(elevation)
+    print('elevation', elevation.shape)
+    return elevation
+
 
 
 def pad_and_crop(img, hs, he, ws, we, cval=0):

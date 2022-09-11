@@ -5,7 +5,7 @@ import time
 from multiprocessing import Process, Queue
 
 from .creatures import CreatureRandom, CreatureLinear, CreatureNeural, CreatureRecurrent, CreatureGendered
-from .game import Game, WORLD_MARGIN
+from .game import Game, WORLD_MARGIN, generate_elevation
 
 
 class MultiGame:
@@ -22,12 +22,16 @@ class MultiGame:
         self.last_render_time = time.time()
         self.steps_count = None
 
+        # Create global elevation map
+        elevation = generate_elevation(nworlds_h * map_h, nworlds_w * map_w, map_seed)
+
         # Create worlds
         self.worlds = []
         for i in range(self.nworlds_h):
             for j in range(self.nworlds_w):
                 idx = i * self.nworlds_w + j
-                w = Game(map_h, map_w, default_scale, seed=seed + idx, map_seed=map_seed + idx, subworld_id=idx)
+                el = elevation[i * map_h: (i + 1) * map_h, j * map_w: (j + 1) * map_w]
+                w = Game(map_h, map_w, default_scale, seed=seed + idx, subworld_id=idx, elevation=el)
                 self.worlds.append(w)
 
         self.games_started = False

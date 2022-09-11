@@ -61,16 +61,13 @@ async def main(args):
         # game = Game()
         game = MultiGame(2, 2, map_h=120, map_w=200)
         # Spawn initial population
-        # for _ in range(1000):
-        #     game.spawn(CreatureGendered(), 0)
-        # for _ in range(1000):
-        #     game.spawn(CreatureRecurrent(), 1)
-        for i in range(game.nworlds_w):
-            for _ in range(1000):
-                game.spawn(CreatureGendered(), i)
-        for i in range(game.nworlds_w):
-            for _ in range(1000):
-                game.spawn(CreatureRecurrent(), i + game.nworlds_h)
+        for i in range(game.nworlds_h):
+            for j in range(game.nworlds_w):
+                idx = i * game.nworlds_w + j
+                for _ in range(1000):
+                    creature = CreatureGendered() if (i + j) % 2 == 0 else CreatureRecurrent()
+                    game.spawn(creature, idx)
+        del creature
 
     # Main loops:
     def game_loop():
