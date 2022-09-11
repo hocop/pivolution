@@ -18,8 +18,9 @@ from av import VideoFrame
 from aiohttp import web
 from io import BytesIO
 
-from pivolution.creature import CreatureGendered
+from pivolution.creatures import CreatureRecurrent, CreatureGendered
 from pivolution.game import Game
+from pivolution.multigame import MultiGame
 
 
 camera_image = np.zeros([100, 100, 3], dtype='uint8')
@@ -57,34 +58,25 @@ async def main(args):
         with open(args.load_from, 'rb') as handle:
             game = pickle.load(handle)
     else:
-        game = Game()
+        # game = Game()
+        game = MultiGame(1, 2)
         # Spawn initial population
-        for i in range(10000):
-            game.spawn()
-
-        # for i in range(0, game.map_h, 5):
-        #     for j in range(0, game.map_w, 3):
-        #         creature0 = CreatureGendered()
-        #         for pos_y in range(i, i + 2):
-        #             for pos_x in range(j, j + 1):
-        #                 gender = 'boy' if pos_x % 2 == 0 else 'girl'
-        #                 creature = CreatureGendered(genes=creature0.genes.copy(), gender=gender)
-        #                 game.spawn(creature, pos_x, pos_y)
+        for i in range(1000):
+            game.spawn(CreatureGendered(), 0)
+        for i in range(1000):
+            game.spawn(CreatureRecurrent(), 1)
 
     # Main loops:
-    def render_loop():
+    def game_loop():
         global camera_image
         while True:
             game.step()
             camera_image = game.render()
-    def sim_loop():
-        while True:
-            game.step()
-    threading.Thread(target=render_loop).start()
-    # threading.Thread(target=sim_loop).start()
+    threading.Thread(target=game_loop).start()
 
     while True:
         await asyncio.sleep(3600)  # sleep forever
+
 
 
 if __name__ == "__main__":

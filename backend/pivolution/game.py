@@ -1,25 +1,23 @@
-from fileinput import filename
 import pickle
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import time
 from numba import njit
 from perlin_noise import PerlinNoise
 import scipy
 
-from .creature import CreatureRandom, CreatureLinear, CreatureNeural, CreatureRecurrent, CreatureGendered
-from .creature import FEAT_WINDOW
+from .creatures import CreatureRandom, CreatureLinear, CreatureNeural, CreatureRecurrent, CreatureGendered
+from .creatures.basic import FEAT_WINDOW
 
 
 class Game:
-    def __init__(self, map_h=720//4, map_w=1280//4, render_h=720, render_w=1280, min_seconds_per_step=0, min_seconds_per_render=0, seed=43, map_seed=42):
+    def __init__(self, map_h=720//4, map_w=1280//4, default_scale=4, seed=43, map_seed=42, subworld_id=None):
         self.map_h = map_h
         self.map_w = map_w
-        self.render_h = render_h
-        self.render_w = render_w
-        self.min_seconds_per_step = min_seconds_per_step
-        self.min_seconds_per_render = min_seconds_per_render
+        self.default_scale = default_scale
+        self.render_h = map_h * default_scale
+        self.render_w = map_w * default_scale
+        self.subworld_id = subworld_id
+        self.seed = seed
 
         self.info = {}
         self.rendering = False
@@ -36,7 +34,7 @@ class Game:
 
         # Creatures
         self.creatures = []
-        self.dead_creatures_ids = []
+        self.removed_creatures_ids = []
         self.num_creatures = 0
 
         # Time stamps
@@ -63,10 +61,11 @@ class Game:
         self.landscape_image = image
         
 
-    def render(self, camera_x=None, camera_y=None, scale=4):
+    def render(self, camera_x=None, camera_y=None, scale=None):
         start = time.time()
         self.rendering = True
         # Get image
+        scale = scale or self.default_scale
         if camera_x is None:
             camera_x = self.map_w // 2
         if camera_y is None:
@@ -123,19 +122,22 @@ class Game:
         # Draw middle points
         has_mid = np.array([mc is not None for mc in arr_mid_color])
         arr_mid_color = np.array([mc for mc in arr_mid_color if mc is not None])
-        pos_x, pos_y = arr_pos_x[has_mid], arr_pos_y[has_mid]
-        a, b = scale // 2 - 1, scale // 2 + 1
-        if scale >= 2 and np.sum(has_mid) > 0:
-            for i in range(a, b):
-                for j in range(a, b):
-                    image[pos_y * scale + i, pos_x * scale + j] = arr_mid_color
+        if len(arr_mid_color) > 0:
+            pos_x, pos_y = arr_pos_x[has_mid], arr_pos_y[has_mid]
+            a, b = scale // 2 - 1, scale // 2 + 1
+            if scale >= 2 and np.sum(has_mid) > 0:
+                for i in range(a, b):
+                    for j in range(a, b):
+                        image[pos_y * scale + i, pos_x * scale + j] = arr_mid_color
 
-        elapsed = time.time() - self.previous_render_time
-        if elapsed < self.min_seconds_per_render:
-            time.sleep(self.min_seconds_per_render - elapsed)
-        self.info['render_freq'] = int(1. / (time.time() - self.previous_render_time))
-        self.info['μs_render'] = int((time.time() - start) * 1e6 / (self.num_creatures + 1))
-        print(self.info)
+        end = time.time()
+        self.info['μs_render'] = int((end - start) * 1e6 / (self.num_creatures + 1))
+        self.info['render_total_ms'] = int((end - start) * 1000)
+        if 'sim_total_ms' in self.info:
+            ms_with_wait = int((end - self.previous_render_time) * 1000)
+            self.info['efficiency'] = (self.info['render_total_ms'] + self.info['sim_total_ms']) / ms_with_wait
+        # if self.subworld_id is None:
+        print(self.subworld_id, self.info)
         self.previous_render_time = time.time()
         self.rendering = False
         return image
@@ -209,13 +211,9 @@ class Game:
             if self.creatures[idx] is None:
                 continue
             creature, pos_x, pos_y, angle = self.creatures[idx]
+            assert self.creature_id_map[pos_y, pos_x] == idx
             if creature.health <= 0:
-                if self.creature_id_map[pos_y, pos_x] == idx:
-                    self.creature_id_map[pos_y, pos_x] = -1
-                meat = 0.25 * (1 - creature.predatory)
-                self.meat_map[pos_y, pos_x] = min(4.0, self.meat_map[pos_y, pos_x] + meat)
-                self.dead_creatures_ids.append(idx)
-                self.creatures[idx] = None
+                self.remove_creature(pos_x, pos_y, leave_meat=True)
             else:
                 num_creatures = num_creatures + 1
         self.num_creatures = num_creatures
@@ -246,6 +244,8 @@ class Game:
             if 'go' in action:
                 direction = 1 if action == 'go forward' else -1
                 new_pos_x, new_pos_y = self.get_cell_in_front(pos_x, pos_y, angle, direction)
+                # Check portals
+                ...
                 # Boundaries
                 if not(self.is_valid_coords(new_pos_x, new_pos_y)):
                     new_pos_x, new_pos_y = pos_x, pos_y
@@ -253,8 +253,10 @@ class Game:
                 go_id = self.creature_id_map[new_pos_y, new_pos_x]
                 if go_id >= 0 and self.creatures[go_id] is not None:
                     new_pos_y, new_pos_x = pos_y, pos_x
+            # Teleport
+            ...
             # Rotate
-            elif 'turn' in action:
+            if 'turn' in action:
                 direction = 1 if action == 'turn right' else -1
                 new_angle = (angle + direction) % 4
             # Update data
@@ -266,11 +268,9 @@ class Game:
             self.creature_id_map[new_pos_y, new_pos_x] = idx
         end_apply = time.time()
 
-        elapsed = time.time() - self.previous_step_time
-        if elapsed < self.min_seconds_per_step:
-            time.sleep(self.min_seconds_per_step - elapsed)
-        self.info['sim_freq'] = int(1. / (time.time() - self.previous_step_time))
-        self.info['μs_sim'] = int((time.time() - start) * 1e6 / (self.num_creatures + 1))
+        end = time.time()
+        self.info['sim_total_ms'] = int((end - start) * 1000)
+        self.info['μs_sim'] = int((end - start) * 1e6 / (self.num_creatures + 1))
         self.info['μs_feats'] = int((end_feats - start) * 1e6 / (self.num_creatures + 1))
         self.info['μs_actions'] = int((end_actions - end_feats) * 1e6 / (self.num_creatures + 1))
         self.info['μs_deadge'] = int((end_deadge - end_actions) * 1e6 / (self.num_creatures + 1))
@@ -278,7 +278,7 @@ class Game:
         self.info['num_creatures'] = num_creatures
         self.previous_step_time = time.time()
 
-        if self.steps_count % (3600 * 3) == 0:
+        if self.subworld_id is None and self.steps_count % (3600 * 3) == 0:
             fname = f'world_{self.steps_count:08n}.pickle'
             with open(fname, 'wb') as handle:
                 pickle.dump(self, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -295,6 +295,20 @@ class Game:
         return feats
 
     def spawn(self, creature=None, pos_x=None, pos_y=None, angle=None):
+        # Find index with None value
+        new_idx = None
+        for i in range(len(self.removed_creatures_ids)):
+            idx = self.removed_creatures_ids[i]
+            if self.creatures[idx] == None:
+                new_idx = idx
+                self.removed_creatures_ids.pop(i)
+                break
+            else:
+                print('Dead error')
+
+        # Seed
+        np.random.seed(self.seed + (new_idx or len(self.creatures)))
+
         # Generate random
         if pos_x is None:
             assert pos_y is None
@@ -310,17 +324,6 @@ class Game:
         if creature is None:
             creature = CreatureGendered()
 
-        # Find index with None value
-        new_idx = None
-        for i in range(len(self.dead_creatures_ids)):
-            idx = self.dead_creatures_ids[i]
-            if self.creatures[idx] == None:
-                new_idx = idx
-                self.dead_creatures_ids.pop(i)
-                break
-            else:
-                print('Dead error')
-
         # Spawn
         if new_idx is None:
             self.creatures.append([creature, pos_x, pos_y, angle])
@@ -328,6 +331,17 @@ class Game:
         else:
             self.creatures[new_idx] = [creature, pos_x, pos_y, angle]
             self.creature_id_map[pos_y, pos_x] = new_idx
+
+    def remove_creature(self, pos_x, pos_y, leave_meat):
+        idx = self.creature_id_map[pos_y, pos_x]
+        # Add meat to map
+        if leave_meat:
+            meat = 0.25 * (1 - self.creatures[idx].predatory)
+            self.meat_map[pos_y, pos_x] = min(4.0, self.meat_map[pos_y, pos_x] + meat)
+        # Remove
+        self.removed_creatures_ids.append(idx)
+        self.creature_id_map[pos_y, pos_x] = -1
+        self.creatures[idx] = None
 
     def generate_elevation_and_walls(self, seed):
         print('Generating map...')
