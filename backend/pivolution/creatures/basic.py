@@ -87,7 +87,7 @@ class Creature(ABC):
         if action == 'attack':
             # Compute hit or miss
             strength = int(np.round(5 * self.predatory))
-            armor_class = 10 + creature_in_front.predatory * 2
+            armor_class = 10
             roll = np.random.randint(1, 21) + strength
             hit = roll >= armor_class
             crit = roll == 20
