@@ -5,10 +5,7 @@ import time
 from multiprocessing import Process, Queue
 
 from .creatures import CreatureRandom, CreatureLinear, CreatureNeural, CreatureRecurrent, CreatureGendered
-from .game import Game
-
-
-WORLD_MARGIN = 4
+from .game import Game, WORLD_MARGIN
 
 
 class MultiGame:
@@ -17,20 +14,21 @@ class MultiGame:
         self.map_w = map_w
         self.nworlds_h = nworlds_h
         self.nworlds_w = nworlds_w
-        self.render_h = (nworlds_h * map_h + (nworlds_h - 1) * WORLD_MARGIN) * default_scale
-        self.render_w = (nworlds_w * map_w + (nworlds_w - 1) * WORLD_MARGIN) * default_scale
+        self.render_h = nworlds_h * map_h * default_scale + nworlds_h * 2 * WORLD_MARGIN
+        self.render_w = nworlds_w * map_w * default_scale + nworlds_w * 2 * WORLD_MARGIN
         self.min_render_time = min_render_time
 
         self.info = {}
         self.last_render_time = time.time()
         self.steps_count = None
 
+        # Create worlds
         self.worlds = []
         for i in range(self.nworlds_h):
             for j in range(self.nworlds_w):
                 idx = i * self.nworlds_w + j
-                g = Game(map_h, map_w, default_scale, seed=seed + idx, map_seed=map_seed + idx, subworld_id=idx)
-                self.worlds.append(g)
+                w = Game(map_h, map_w, default_scale, seed=seed + idx, map_seed=map_seed + idx, subworld_id=idx)
+                self.worlds.append(w)
 
         self.games_started = False
 
@@ -46,14 +44,16 @@ class MultiGame:
             x = 0
             for j in range(self.nworlds_w):
                 idx = i * self.nworlds_w + j
-                # Get image from queue
+                # Get info from queue
                 if not self.queues[idx].empty():
                     self.worlds_info[idx] = self.queues[idx].get()
+                # Get image
+                img = self.worlds_info[idx]['render']
+                h, w, _ = img.shape
                 # Draw image
-                w = self.worlds[idx]
-                image[y: y + w.render_h, x: x + w.render_w] = self.worlds_info[idx]['render']
-                x = x + w.render_w + WORLD_MARGIN
-            y = y + w.render_h + WORLD_MARGIN
+                image[y: y + h, x: x + w] = img
+                x = x + w
+            y = y + h
 
         end = time.time()
         time_overhead = self.min_render_time - (end - self.last_render_time)
@@ -84,13 +84,20 @@ class MultiGame:
 
 
     def start_games(self):
+        self.create_portals()
+
         def game_loop(world, queue, signals):
             while True:
+                # When stop signal is recieved, send world to the main process and exit
                 if not signals.empty():
                     s = signals.get()
                     if s == 'stop':
+                        print(world.subworld_id, 'Recieved stop')
+                        world.destroy_portals()
+                        print(world.subworld_id, 'Destroyed portals')
                         queue.put({'world': world})
                         break
+                # Physics and render step
                 world.step()
                 queue.put({'render': world.render(), 'steps_count': world.steps_count})
 
@@ -99,9 +106,11 @@ class MultiGame:
         self.signals = []
         self.worlds_info = []
         for w in self.worlds:
+            # Copy sub-world to a separate process
             q = Queue(maxsize=10)
             s = Queue(maxsize=10)
             p = Process(target=game_loop, args=(w, q, s))
+            # Start process
             p.start()
             self.processes.append(p)
             self.queues.append(q)
@@ -114,20 +123,23 @@ class MultiGame:
     def stop_games(self):
         self.games_started = False
 
+        # Send stop signal to all processes
         for s in self.signals:
             s.put('stop')
 
+        # Get sub-worlds current states from all processes
         for i in range(len(self.worlds)):
-            w = None
-            while w is None:
+            while True:
                 info = self.queues[i].get()
                 if 'world' in info:
-                    w = info['world']
-            self.worlds[i] = w
+                    break
+            self.worlds[i] = info['world']
 
+        # Wait for processes to end
         for p in self.processes:
             p.join()
 
+        # Clear variables
         self.processes = []
         self.queues = []
         self.signals = []
@@ -140,3 +152,21 @@ class MultiGame:
             world_id = np.random.randint(len(self.worlds))
         w = self.worlds[world_id]
         w.spawn(creature, pos_x, pos_y, angle)
+
+    def create_portals(self):
+        for i in range(self.nworlds_h):
+            for j in range(self.nworlds_w):
+                # Left-right portals
+                if j < self.nworlds_w - 1:
+                    idx_left = i * self.nworlds_w + j
+                    idx_right = i * self.nworlds_w + j + 1
+                    q_lr, q_rl = Queue(), Queue()
+                    self.worlds[idx_left].add_portal('right', q_rl, q_lr)
+                    self.worlds[idx_right].add_portal('left', q_lr, q_rl)
+                # Up-down portals
+                if i < self.nworlds_h - 1:
+                    idx_up = i * self.nworlds_h + j
+                    idx_down = (i + 1) * self.nworlds_h + j
+                    q_ud, q_du = Queue(), Queue()
+                    self.worlds[idx_up].add_portal('down', q_du, q_ud)
+                    self.worlds[idx_down].add_portal('up', q_ud, q_du)

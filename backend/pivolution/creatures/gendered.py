@@ -37,14 +37,13 @@ class CreatureGendered(Creature):
 
         # Parse genes
         boy_prob = self.genes[1]
-        boy_reproduce_cost = self.genes[2]
         self.net.set_weights(self.genes[2:])
 
         self.gender = 'boy' if np.random.random() < boy_prob else 'girl'
 
         if self.gender == 'boy':
             self.face_color = [0, 255, 255]
-            self.action_costs['reproduce'] = boy_reproduce_cost * self.ACTION_COSTS['reproduce']
+            self.action_costs['reproduce'] = 0.5 * self.ACTION_COSTS['reproduce']
 
         if self.gender == 'girl':
             self.face_color = [255, 0, 255]
@@ -114,6 +113,5 @@ class CreatureGendered(Creature):
         net_parms = self.net.get_new_params()
         predatory = np.random.random(size=1)
         boy_prob = np.random.random(size=1)
-        boy_reproduce_cost = np.random.random(size=1)
-        genes = np.hstack([predatory, boy_prob, boy_reproduce_cost, net_parms])
+        genes = np.hstack([predatory, boy_prob, net_parms])
         return genes

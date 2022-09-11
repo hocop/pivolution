@@ -9,6 +9,13 @@ from .creatures import CreatureRandom, CreatureLinear, CreatureNeural, CreatureR
 from .creatures.basic import FEAT_WINDOW
 
 
+PORTAL_SIZE = 0.1
+PORTAL_COLOR = [0, 255, 200]
+PORTAL_DISABLED_COLOR = [100, 100, 100]
+
+WORLD_MARGIN = 2
+
+
 class Game:
     def __init__(self, map_h=720//4, map_w=1280//4, default_scale=4, seed=43, map_seed=42, subworld_id=None):
         self.map_h = map_h
@@ -22,6 +29,8 @@ class Game:
         self.info = {}
         self.rendering = False
         self.steps_count = 0
+        self.portals = {}
+        self.portal_out_enabled = False
         np.random.seed(seed)
 
         # Elevation map
@@ -129,6 +138,24 @@ class Game:
                 for i in range(a, b):
                     for j in range(a, b):
                         image[pos_y * scale + i, pos_x * scale + j] = arr_mid_color
+        # Draw portals
+        w = image.shape[1]
+        margin_up = np.zeros([WORLD_MARGIN, w, 3], dtype='uint8')
+        margin_down = margin_up.copy()
+        portal_color = PORTAL_COLOR if self.portal_out_enabled else PORTAL_DISABLED_COLOR
+        if 'up' in self.portals:
+            margin_up[:, int(w - w * PORTAL_SIZE) // 2: int(w + w * PORTAL_SIZE) // 2] = portal_color
+        if 'down' in self.portals:
+            margin_down[:, int(w - w * PORTAL_SIZE) // 2: int(w + w * PORTAL_SIZE) // 2] = portal_color
+        image = np.concatenate([margin_up, image, margin_down], 0)
+        h = image.shape[0]
+        margin_left = np.zeros([h, WORLD_MARGIN, 3], dtype='uint8')
+        margin_right = margin_left.copy()
+        if 'left' in self.portals:
+            margin_left[int(h - h * PORTAL_SIZE) // 2: int(h + h * PORTAL_SIZE) // 2, :] = portal_color
+        if 'right' in self.portals:
+            margin_right[int(h - h * PORTAL_SIZE) // 2: int(h + h * PORTAL_SIZE) // 2, :] = portal_color
+        image = np.concatenate([margin_left, image, margin_right], 1)
 
         end = time.time()
         self.info['μs_render'] = int((end - start) * 1e6 / (self.num_creatures + 1))
@@ -149,6 +176,21 @@ class Game:
 
     def step(self):
         start = time.time()
+
+        # Recieve creatures from portals
+        for dir in self.portals:
+            q_in = self.portals[dir]['in']
+            if not q_in.empty():
+                signal = q_in.get()
+                if signal == 'stop':
+                    self.portals[dir]['in'] = None
+                else:
+                    creature, pos_x, pos_y, angle = signal
+                    # Periodic conditions
+                    pos_x = pos_x % self.map_w
+                    pos_y = pos_y % self.map_h
+                    self.spawn(creature, pos_x, pos_y, angle)
+                    # print(self.subworld_id, 'RECIEVED', pos_x, pos_y, self.creature_id_map[pos_y, pos_x])
 
         # Creature params map
         predatory_map = np.full([self.map_h, self.map_w], -1)
@@ -211,7 +253,7 @@ class Game:
             if self.creatures[idx] is None:
                 continue
             creature, pos_x, pos_y, angle = self.creatures[idx]
-            assert self.creature_id_map[pos_y, pos_x] == idx
+            assert self.creature_id_map[pos_y, pos_x] == idx, (self.creature_id_map[pos_y, pos_x], idx)
             if creature.health <= 0:
                 self.remove_creature(pos_x, pos_y, leave_meat=True)
             else:
@@ -244,17 +286,27 @@ class Game:
             if 'go' in action:
                 direction = 1 if action == 'go forward' else -1
                 new_pos_x, new_pos_y = self.get_cell_in_front(pos_x, pos_y, angle, direction)
-                # Check portals
-                ...
+                # Check output portals
+                if self.portal_out_enabled:
+                    teleported = False
+                    for dir in self.portals:
+                        if self.check_in_portal(new_pos_x, new_pos_y, dir):
+                            self.portals[dir]['out'].put((creature, new_pos_x, new_pos_y, angle))
+                            self.remove_creature(pos_x, pos_y, leave_meat=False)
+                            # print(self.subworld_id, 'SENT CREATURE', pos_x, pos_y)
+                            teleported = True
+                            break
+                    if teleported:
+                        self.num_creatures -= 1
+                        continue
                 # Boundaries
                 if not(self.is_valid_coords(new_pos_x, new_pos_y)):
                     new_pos_x, new_pos_y = pos_x, pos_y
                 # Check collision
                 go_id = self.creature_id_map[new_pos_y, new_pos_x]
-                if go_id >= 0 and self.creatures[go_id] is not None:
+                if go_id >= 0:
+                    assert self.creatures[go_id] is not None
                     new_pos_y, new_pos_x = pos_y, pos_x
-            # Teleport
-            ...
             # Rotate
             if 'turn' in action:
                 direction = 1 if action == 'turn right' else -1
@@ -304,10 +356,11 @@ class Game:
                 self.removed_creatures_ids.pop(i)
                 break
             else:
-                print('Dead error')
+                raise BaseException('Dead error')
 
         # Seed
-        np.random.seed(self.seed + (new_idx or len(self.creatures)))
+        if len(self.creatures) == 0:
+            np.random.seed(self.seed)
 
         # Generate random
         if pos_x is None:
@@ -316,13 +369,19 @@ class Game:
             assert pos_x is None
             pos_x = np.random.randint(self.map_w)
             pos_y = np.random.randint(self.map_h)
-            while(self.walls_map[pos_y, pos_x]):
+            while(not (self.is_valid_coords(pos_x, pos_y) and self.creature_id_map[pos_y, pos_x] == -1)):
                 pos_x = np.random.randint(self.map_w)
                 pos_y = np.random.randint(self.map_h)
+        else:
+            assert self.is_valid_coords(pos_x, pos_y)
         if angle is None:
             angle = np.random.randint(4)
         if creature is None:
             creature = CreatureGendered()
+
+        # Add to queue if cannot spawn right now
+        if self.creature_id_map[pos_y, pos_x] >= 0:
+            ...
 
         # Spawn
         if new_idx is None:
@@ -336,12 +395,52 @@ class Game:
         idx = self.creature_id_map[pos_y, pos_x]
         # Add meat to map
         if leave_meat:
-            meat = 0.25 * (1 - self.creatures[idx].predatory)
+            meat = 0.25 * (1 - self.creatures[idx][0].predatory)
             self.meat_map[pos_y, pos_x] = min(4.0, self.meat_map[pos_y, pos_x] + meat)
         # Remove
         self.removed_creatures_ids.append(idx)
         self.creature_id_map[pos_y, pos_x] = -1
         self.creatures[idx] = None
+
+    def add_portal(self, where, queue_in, queue_out):
+        self.portals[where] = {'in': queue_in, 'out': queue_out}
+        self.portal_out_enabled = True
+    
+    def check_in_portal(self, pos_x, pos_y, dir):
+        if pos_y < 0 and dir == 'up':
+            low = self.map_w * 0.5 * (1 - PORTAL_SIZE)
+            high = self.map_w * 0.5 * (1 + PORTAL_SIZE)
+            if pos_x > low and pos_x < high:
+                return True
+        if pos_y >= self.map_h and dir == 'down':
+            low = self.map_w * 0.5 * (1 - PORTAL_SIZE)
+            high = self.map_w * 0.5 * (1 + PORTAL_SIZE)
+            if pos_x > low and pos_x < high:
+                return True
+        if pos_x < 0 and dir == 'left':
+            low = self.map_h * 0.5 * (1 - PORTAL_SIZE)
+            high = self.map_h * 0.5 * (1 + PORTAL_SIZE)
+            if pos_y > low and pos_y < high:
+                return True
+        if pos_x >= self.map_w and dir == 'right':
+            low = self.map_h * 0.5 * (1 - PORTAL_SIZE)
+            high = self.map_h * 0.5 * (1 + PORTAL_SIZE)
+            if pos_y > low and pos_y < high:
+                return True
+        return False
+
+    def destroy_portals(self):
+        # Stop sending creatures
+        self.portal_out_enabled = False
+        # Send stop signal
+        for dir in self.portals:
+            self.portals[dir]['out'].put('stop')
+        # Wait until there is no creatures stuck inside portals
+        for dir in self.portals:
+            while self.portals[dir]['in'] is not None:
+                self.step()
+        # Remove portals
+        self.portals = {}
 
     def generate_elevation_and_walls(self, seed):
         print('Generating map...')

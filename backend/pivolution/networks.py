@@ -15,6 +15,7 @@ class Perceptron:
         ]
 
     def set_weights(self, params):
+        assert len(params) == sum(self.weight_sizes)
         params = np.split(params, np.cumsum(self.weight_sizes))
 
         self.weight_1 = params[0].reshape(self.n_inputs, self.hidden_size)
