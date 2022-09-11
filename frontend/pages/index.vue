@@ -3,11 +3,11 @@
   <client-only>
     <VideoSimple></VideoSimple>
   </client-only>
-  <v-navigation-drawer
+  <!-- <v-navigation-drawer
     absolute
     permanent
     right
-  >
+  > -->
 
   </v-navigation-drawer>
   </v-container>

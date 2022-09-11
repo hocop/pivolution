@@ -9,7 +9,7 @@ from .game import Game, WORLD_MARGIN
 
 
 class MultiGame:
-    def __init__(self, nworlds_h, nworlds_w, map_h=200, map_w=200, default_scale=4, min_render_time=0.01, seed=42, map_seed=42):
+    def __init__(self, nworlds_h=1, nworlds_w=2, map_h=200, map_w=200, default_scale=4, min_render_time=0.01, seed=42, map_seed=42):
         self.map_h = map_h
         self.map_w = map_w
         self.nworlds_h = nworlds_h
@@ -92,9 +92,7 @@ class MultiGame:
                 if not signals.empty():
                     s = signals.get()
                     if s == 'stop':
-                        print(world.subworld_id, 'Recieved stop')
                         world.destroy_portals()
-                        print(world.subworld_id, 'Destroyed portals')
                         queue.put({'world': world})
                         break
                 # Physics and render step
@@ -165,8 +163,8 @@ class MultiGame:
                     self.worlds[idx_right].add_portal('left', q_lr, q_rl)
                 # Up-down portals
                 if i < self.nworlds_h - 1:
-                    idx_up = i * self.nworlds_h + j
-                    idx_down = (i + 1) * self.nworlds_h + j
+                    idx_up = i * self.nworlds_w + j
+                    idx_down = (i + 1) * self.nworlds_w + j
                     q_ud, q_du = Queue(), Queue()
                     self.worlds[idx_up].add_portal('down', q_du, q_ud)
                     self.worlds[idx_down].add_portal('up', q_ud, q_du)

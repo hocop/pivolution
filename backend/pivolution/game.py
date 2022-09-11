@@ -9,7 +9,7 @@ from .creatures import CreatureRandom, CreatureLinear, CreatureNeural, CreatureR
 from .creatures.basic import FEAT_WINDOW
 
 
-PORTAL_SIZE = 0.1
+PORTAL_SIZE = 0.3
 PORTAL_COLOR = [0, 255, 200]
 PORTAL_DISABLED_COLOR = [100, 100, 100]
 
@@ -45,6 +45,7 @@ class Game:
         self.creatures = []
         self.removed_creatures_ids = []
         self.num_creatures = 0
+        self.creatures_queue = []
 
         # Time stamps
         self.previous_render_time = time.time()
@@ -177,10 +178,16 @@ class Game:
     def step(self):
         start = time.time()
 
+        # Unstuck some creatures stuck in portals
+        if len(self.creatures_queue) > 0:
+            creature, pos_x, pos_y, angle = self.creatures_queue[0]
+            self.creatures_queue = self.creatures_queue[1:]
+            self.spawn(creature, pos_x, pos_y, angle)
+
         # Recieve creatures from portals
         for dir in self.portals:
             q_in = self.portals[dir]['in']
-            if not q_in.empty():
+            if q_in is not None and not q_in.empty():
                 signal = q_in.get()
                 if signal == 'stop':
                     self.portals[dir]['in'] = None
@@ -381,7 +388,8 @@ class Game:
 
         # Add to queue if cannot spawn right now
         if self.creature_id_map[pos_y, pos_x] >= 0:
-            ...
+            self.creatures_queue.append([creature, pos_x, pos_y, angle])
+            return
 
         # Spawn
         if new_idx is None:
