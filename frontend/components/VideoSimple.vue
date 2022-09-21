@@ -18,8 +18,12 @@ export default {
       .then(imageBlob => {
           const imageObjectURL = URL.createObjectURL(imageBlob);
           this.$refs.video.src = imageObjectURL
+          return imageObjectURL
       })
-      .then(() => setTimeout(imgReload, 10))
+      .then((imageObjectURL) => {
+        URL.revokeObjectURL(imageObjectURL)
+        setTimeout(imgReload, 10)
+      })
     }
 
     imgReload()

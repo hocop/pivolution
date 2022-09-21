@@ -1,5 +1,4 @@
 import pickle
-import queue
 import numpy as np
 import time
 from multiprocessing import Process, Queue
