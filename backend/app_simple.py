@@ -11,6 +11,7 @@ import platform
 import ssl
 import time
 import threading
+import cv2
 
 from PIL import Image
 from av import VideoFrame
@@ -25,6 +26,10 @@ from pivolution.multigame import MultiGame
 
 camera_image = np.zeros([100, 100, 3], dtype='uint8')
 
+FPS = 10
+last_frame_time = -1
+
+out_video = None
 
 async def frame(request):
     # camera_image = game.render()
@@ -35,6 +40,8 @@ async def frame(request):
 
 
 async def main(args):
+    global out_video
+
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)
     else:
@@ -69,17 +76,29 @@ async def main(args):
                     game.spawn(creature, idx)
         del creature
 
+    # Open output video file
+    if args.write_video is not None:
+        out_video = cv2.VideoWriter(args.write_video, cv2.VideoWriter_fourcc('M','J','P','G'), FPS, (game.render_w, game.render_h))
+
     # Main loops:
     def game_loop():
         global camera_image
+        global last_frame_time
         while True:
             game.step()
             camera_image = game.render()
+
+            # Write to output file
+            if args.write_video is not None:
+                t = game.steps_count
+                if t is not None and t > last_frame_time:
+                    out_video.write(camera_image[:, :, ::-1])
+                    last_frame_time = t
+
     threading.Thread(target=game_loop).start()
 
     while True:
         await asyncio.sleep(3600)  # sleep forever
-
 
 
 if __name__ == "__main__":
@@ -87,6 +106,7 @@ if __name__ == "__main__":
     parser.add_argument("--cert-file", help="SSL certificate file (for HTTPS)")
     parser.add_argument("--key-file", help="SSL key file (for HTTPS)")
     parser.add_argument("--load_from", type=str, default=None, help="Load game from restart file")
+    parser.add_argument("--write_video", type=str, default=None, help="Path to write video")
     parser.add_argument(
         "--host", default="0.0.0.0", help="Host for HTTP server (default: 0.0.0.0)"
     )
@@ -96,4 +116,12 @@ if __name__ == "__main__":
     parser.add_argument("--verbose", "-v", action="count")
     args = parser.parse_args()
 
-    asyncio.run(main(args))
+    try:
+        asyncio.run(main(args))
+    except KeyboardInterrupt:
+        print('#' * 100)
+        print('Finishing')
+        if args.write_video is not None:
+            out_video.release()
+        print('Finished')
+        print('#' * 100)

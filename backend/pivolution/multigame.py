@@ -81,7 +81,7 @@ class MultiGame:
             self.steps_count = min(counts) - 1
 
         # Save world restart file
-        if self.steps_count is not None and self.steps_count % (3600 * 3) == 0:
+        if self.steps_count is not None and self.steps_count % 100_000 == 0:
             self.stop_games()
             fname = f'worlds_{self.steps_count:08n}.pickle'
             with open(fname, 'wb') as handle:
