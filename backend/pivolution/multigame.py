@@ -2,6 +2,7 @@ import pickle
 import numpy as np
 import time
 from multiprocessing import Process, Queue
+import cv2
 
 from .creatures import CreatureRandom, CreatureLinear, CreatureNeural, CreatureRecurrent, CreatureGendered
 from .game import Game, WORLD_MARGIN, generate_elevation
@@ -57,6 +58,9 @@ class MultiGame:
                 image[y: y + h, x: x + w] = img
                 x = x + w
             y = y + h
+
+        # Write some Text
+        cv2.putText(image, f'Step {self.steps_count}', (10, image.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 1, 2)
 
         end = time.time()
         time_overhead = self.min_render_time - (end - self.last_render_time)
