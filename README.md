@@ -25,7 +25,7 @@ In this screenshot:
 * Dots
     * Green - herbavores. Get energy from nowhere.
     * Red - carnivores. Get energy from meat.
-    * Yellow - omnivores (and all colors between green and red). Get energy from nowhere, but less efficient. Get energy from meat same as carnivores. Weaker than carnivores (yes, they can fight).
+    * Yellow - (and other colors between green and red) omnivores. Get energy from nowhere, but less efficient. Get energy from meat same as carnivores. Weaker than carnivores (yes, they can fight).
     * Purple - meat, laying on the ground.
 * Splits
     * Map is split in 4 parts, each is run by a separate process.
