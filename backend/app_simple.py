@@ -1,17 +1,14 @@
 """my_controller controller."""
 
+from lib2to3.pytree import Base
 import pickle
 import numpy as np
 import argparse
 import asyncio
-import json
 import logging
-import os
-import platform
 import ssl
-import time
-import threading
 import cv2
+import threading
 
 from PIL import Image
 from av import VideoFrame
@@ -26,8 +23,7 @@ from pivolution.multigame import MultiGame
 
 camera_image = np.zeros([100, 100, 3], dtype='uint8')
 
-FPS = 10
-last_frame_time = -1
+FPS = 30
 
 out_video = None
 
@@ -83,22 +79,24 @@ async def main(args):
     # Main loops:
     def game_loop():
         global camera_image
-        global last_frame_time
+        count_0 = game.steps_count
         while True:
             game.step()
             camera_image = game.render()
 
             # Write to output file
             if args.write_video is not None:
-                t = game.steps_count
-                if t is not None and t > last_frame_time:
-                    out_video.write(camera_image[:, :, ::-1])
-                    last_frame_time = t
+                out_video.write(camera_image[:, :, ::-1])
 
-    threading.Thread(target=game_loop).start()
+            if args.max_steps is not None and game.steps_count - count_0 > args.max_steps:
+                game.stop_games()
+                print('Max steps reached', game.steps_count, args.max_steps)
+                break
 
-    while True:
-        await asyncio.sleep(3600)  # sleep forever
+    game_thread = threading.Thread(target=game_loop)
+    game_thread.start()
+    while game_thread.is_alive():
+        await asyncio.sleep(1)
 
 
 if __name__ == "__main__":
@@ -107,6 +105,7 @@ if __name__ == "__main__":
     parser.add_argument("--key-file", help="SSL key file (for HTTPS)")
     parser.add_argument("--load_from", type=str, default=None, help="Load game from restart file")
     parser.add_argument("--write_video", type=str, default=None, help="Path to write video")
+    parser.add_argument("--max_steps", type=int, default=None, help="Maximum number of steps to simulate")
     parser.add_argument(
         "--host", default="0.0.0.0", help="Host for HTTP server (default: 0.0.0.0)"
     )
@@ -118,7 +117,7 @@ if __name__ == "__main__":
 
     try:
         asyncio.run(main(args))
-    except KeyboardInterrupt:
+    except:
         print('#' * 100)
         print('Finishing')
         if args.write_video is not None:

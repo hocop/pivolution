@@ -35,6 +35,7 @@ class MultiGame:
                 self.worlds.append(w)
 
         self.games_started = False
+        self.steps_count = 0
 
 
     def render(self, camera_x=None, camera_y=None, scale=4):
@@ -48,9 +49,6 @@ class MultiGame:
             x = 0
             for j in range(self.nworlds_w):
                 idx = i * self.nworlds_w + j
-                # Get info from queue
-                if not self.queues[idx].empty():
-                    self.worlds_info[idx] = self.queues[idx].get()
                 # Get image
                 img = self.worlds_info[idx]['render']
                 h, w, _ = img.shape
@@ -74,11 +72,14 @@ class MultiGame:
         if not self.games_started:
             self.start_games()
 
+        # Get info from queues
+        for i in range(len(self.queues)):
+            self.worlds_info[i] = self.queues[i].get()
+            while self.queues[i].qsize() > 0:
+                self.worlds_info[i] = self.queues[i].get()
+
         # Update steps count
-        self.steps_count = None
-        counts = [info['steps_count'] for info in self.worlds_info if 'steps_count' in info]
-        if len(counts) > 0:
-            self.steps_count = min(counts) - 1
+        self.steps_count += 1
 
         # Save world restart file
         if self.steps_count is not None and self.steps_count % 100_000 == 0:
