@@ -8,7 +8,7 @@ Features of this simulator:
     * Behaviour is defined by neural network
     * Neural network weights are defined by genes
     * Two-gendered and one-gendered creatures are supported
-    * Gene recombination like in humans (diploid organisms, mitosis, cross over and stuff)
+    * Gene recombination like in humans (diploid organisms, meiosis, cross over and stuff)
 * World is generated procedurally.
 * Implemented in python with highly efficient numpy operations
 * Runs on multiple CPU cores
