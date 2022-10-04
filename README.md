@@ -22,6 +22,8 @@ Features of this simulator:
 >* See population-level evolution instead of individial
 >* See complicated behaviours (sexual reproduction, swarm intelligence)
 >* Achieve this without any hard coded rules or restrictions
+> 
+> These goals are yet to be achieved in the future.
 
 Screenshot:
 ![](example.png)
@@ -34,15 +36,15 @@ In this screenshot:
 * Dots
     * Green - herbavores. Get a little energy from nowhere.
     * Red - carnivores. Get a lot of energy from meat.
-    * Yellow - (and other colors between green and red) omnivores. Get energy from nowhere, but less efficient. Get energy from meat same as carnivores. Weaker than carnivores (yes, they can fight).
+    * Yellow (and other colors between green and red) - omnivores. Get energy from nowhere, but less efficient. Get energy from meat same as carnivores. Weaker than carnivores (yes, they can fight).
     * Purple - meat, laying on the ground. Herbavores get less energy if there is meat in their cell.
 * Splits
     * Map is split in 4 parts, each is run by a separate [process](https://docs.python.org/3/library/multiprocessing.html#the-process-class).
-    * Cyan lines - portals. Creatures can pass through them. They are made small in order to limit I/O between processes.
+    * Cyan lines - portals. Creatures can pass through them. Portals are made small in order to limit I/O between processes.
     * Processes are not syncronised. Time goes faster in places where there are less creatures.
 
 > ### Performance
-> This screenshot has only 4 subworlds. There are around 12 000 creatures. In practice, there can be as many subworlds as the number of CPU's on the machine. Simulation with this many creatures usually runs at around 5-10 steps per second.
+> This screenshot has only 4 subworlds. There are around 12 000 creatures. In practice, there can be as many subworlds as the number of CPU's on the machine. Simulation with this many creatures usually runs at around 5-10 frames per second. Speed does not decrease when more subworlds are added (given enough CPU's).
 
 ## How to run
 Start backend:
