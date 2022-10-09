@@ -6,7 +6,7 @@ import copy
 from ..networks import Perceptron, Recurrent
 
 NUM_FEATURES = 8
-FEAT_WINDOW = 3
+FEAT_WINDOW = 5
 
 
 class Creature(ABC):

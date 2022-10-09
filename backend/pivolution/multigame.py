@@ -9,7 +9,7 @@ from .game import Game, WORLD_MARGIN, generate_elevation
 
 
 class MultiGame:
-    def __init__(self, nworlds_h=1, nworlds_w=2, map_h=200, map_w=200, default_scale=4, min_render_time=0.01, seed=42, map_seed=42):
+    def __init__(self, nworlds_h=1, nworlds_w=2, map_h=200, map_w=200, default_scale=4, min_render_time=0.01, seed=42, map_seed=42, save_period=-1):
         self.map_h = map_h
         self.map_w = map_w
         self.nworlds_h = nworlds_h
@@ -17,6 +17,7 @@ class MultiGame:
         self.render_h = nworlds_h * map_h * default_scale + nworlds_h * 2 * WORLD_MARGIN
         self.render_w = nworlds_w * map_w * default_scale + nworlds_w * 2 * WORLD_MARGIN
         self.min_render_time = min_render_time
+        self.save_period = save_period
 
         self.info = {}
         self.last_render_time = time.time()
@@ -31,7 +32,7 @@ class MultiGame:
             for j in range(self.nworlds_w):
                 idx = i * self.nworlds_w + j
                 el = elevation[i * map_h: (i + 1) * map_h, j * map_w: (j + 1) * map_w]
-                w = Game(map_h, map_w, default_scale, seed=seed + idx, subworld_id=idx, elevation=el)
+                w = Game(map_h, map_w, default_scale, seed=seed + idx, subworld_id=idx, elevation=el, save_period=-1)
                 self.worlds.append(w)
 
         self.games_started = False
@@ -82,7 +83,7 @@ class MultiGame:
         self.steps_count += 1
 
         # Save world restart file
-        if self.steps_count is not None and self.steps_count % 100_000 == 0:
+        if self.save_period > 0 and self.steps_count % self.save_period == 0:
             self.stop_games()
             fname = f'worlds_{self.steps_count:08n}.pickle'
             with open(fname, 'wb') as handle:

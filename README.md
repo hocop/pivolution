@@ -18,15 +18,13 @@ Features of this simulator:
     * CLI backend in python
     * Web browser frontend in VUE.js
 
->Main goals:
+>Main future goals:
 >* See population-level evolution instead of individial
 >* See complicated behaviours (sexual reproduction, swarm intelligence)
 >* Achieve this without any hard coded rules or restrictions
-> 
-> These goals are yet to be achieved in the future.
 
 Screenshot:
-![](example.png)
+![](screenshot.png)
 
 In this screenshot:
 * Area colors
@@ -43,8 +41,14 @@ In this screenshot:
     * Cyan lines - portals. Creatures can pass through them. Portals are made small in order to limit I/O between processes.
     * Processes are not syncronised. Time goes faster in places where there are less creatures.
 
+
+> ### Predatory
+> This plot shows every parameter that depends on creature's color:
+> 
+> ![](predatory_plot.png)
+
 > ### Performance
-> This screenshot has only 4 subworlds. There are around 12 000 creatures. In practice, there can be as many subworlds as the number of CPU's on the machine. Simulation with this many creatures usually runs at around 5-10 frames per second. Speed does not decrease when more subworlds are added (given enough CPU's).
+> The screenshot above has only 4 subworlds. There are around 12 000 creatures in total. In practice, there can be as many subworlds as the number of CPU's on the machine. Simulation with this many creatures usually runs at around 5-10 frames per second. Speed does not decrease when more subworlds are added (given enough CPU's).
 
 ## How to run
 Start backend:

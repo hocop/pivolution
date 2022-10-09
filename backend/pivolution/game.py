@@ -13,11 +13,11 @@ PORTAL_SIZE = 0.3
 PORTAL_COLOR = [0, 255, 200]
 PORTAL_DISABLED_COLOR = [100, 100, 100]
 
-WORLD_MARGIN = 2
+WORLD_MARGIN = 1
 
 
 class Game:
-    def __init__(self, map_h=720//4, map_w=1280//4, default_scale=4, seed=43, map_seed=42, subworld_id=None, elevation=None):
+    def __init__(self, map_h=720//4, map_w=1280//4, default_scale=4, seed=43, map_seed=42, subworld_id=None, elevation=None, save_period=-1):
         self.map_h = map_h
         self.map_w = map_w
         self.default_scale = default_scale
@@ -25,6 +25,7 @@ class Game:
         self.render_w = map_w * default_scale
         self.subworld_id = subworld_id
         self.seed = seed
+        self.save_period = save_period
 
         self.info = {}
         self.rendering = False
@@ -337,7 +338,7 @@ class Game:
         self.info['num_creatures'] = num_creatures
         self.previous_step_time = time.time()
 
-        if self.subworld_id is None and self.steps_count % (3600 * 3) == 0:
+        if self.save_period > 0 and self.steps_count % self.save_period == 0:
             fname = f'world_{self.steps_count:08n}.pickle'
             with open(fname, 'wb') as handle:
                 pickle.dump(self, handle, protocol=pickle.HIGHEST_PROTOCOL)

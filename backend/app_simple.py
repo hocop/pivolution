@@ -106,6 +106,7 @@ if __name__ == "__main__":
     parser.add_argument("--load_from", type=str, default=None, help="Load game from restart file")
     parser.add_argument("--write_video", type=str, default=None, help="Path to write video")
     parser.add_argument("--max_steps", type=int, default=None, help="Maximum number of steps to simulate")
+    parser.add_argument("--save_period", type=int, default=100_000, help="Save every N steps")
     parser.add_argument(
         "--host", default="0.0.0.0", help="Host for HTTP server (default: 0.0.0.0)"
     )
