@@ -41,12 +41,6 @@ In this screenshot:
     * Cyan lines - portals. Creatures can pass through them. Portals are made small in order to limit I/O between processes.
     * Processes are not syncronised. Time goes faster in places where there are less creatures.
 
-
-> ### Predatory
-> This plot shows every parameter that depends on creature's color:
-> 
-> ![](predatory_plot.png)
-
 > ### Performance
 > The screenshot above has only 4 subworlds. There are around 12 000 creatures in total. In practice, there can be as many subworlds as the number of CPU's on the machine. Simulation with this many creatures usually runs at around 5-10 frames per second. Speed does not decrease when more subworlds are added (given enough CPU's).
 
@@ -66,6 +60,34 @@ npm run dev
 ```
 
 Open http://127.0.0.1:3000 in your browser and watch the game play itself.
+
+## More details on simulation rules
+
+### Health and energy
+Each creature starts with 1 health and 0.25 energy. Maximum of both variables is 1.
+
+### Actions
+Each step each creature performs one of 6 actions. Each action costs some amount of energy:
+```
+nothing         0.0
+go forward      0.0
+go backward     0.001
+turn right      0.001
+turn left       0.001
+reproduce       0.5
+*attack         0.06
+```
+
+### Fights
+`attack` action is performed only when creature chooses to `go forward` but there is another creature in front. Creature cannot do `attack` separately.
+
+When attacking, D&D rules are applied to compute hit/miss and damage. Creatures have 10 armor class. Damage roll is 1d4. Predators have +5 strength bonus, while herbavores have none. Damage is then multiplied by 0.1.
+
+### Predatory
+`predatory` is the first gene in any creature. It can have value from 0 to 1. Creature's color depends on `predatory`. This plot shows every parameter that depends on this gene:
+
+![](predatory_plot.png)
+
 
 ## To be made in future
 * docker image
