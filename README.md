@@ -66,6 +66,8 @@ Open http://127.0.0.1:3000 in your browser and watch the game play itself.
 ### Health and energy
 Each creature starts with 1 health and 0.25 energy. Maximum of both variables is 1.
 
+Health is restored automatically. Creatures start taking damage if they are old.
+
 ### Actions
 Each step each creature performs one of 6 actions. Each action costs some amount of energy:
 ```
