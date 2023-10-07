@@ -61,7 +61,7 @@ class Creature(ABC):
         water_level, air_level, meat_in_this_cell, creature_in_front, local_feats = self.features
 
         # Photosynthesize
-        self.energy += self.gain_from_sun * np.exp(-(water_level * 5 + meat_in_this_cell * 4))
+        self.energy += self.gain_from_sun * np.exp(-(meat_in_this_cell * 4)) * (2 - np.exp(-(air_level * 5)))
         # Eat meat
         self.energy += self.gain_from_meat * meat_in_this_cell
         self.energy = min(self.energy, 1.0)
@@ -121,14 +121,17 @@ class Creature(ABC):
     def reproduce(self):
         genes = self.genes.copy()
         # Mutation
-        mutant_mask = np.random.random(size=len(genes)) < 0.01
-        mutant_genes = self.completely_new_genes()
-        new_genes = genes * (1 - mutant_mask) + mutant_genes * mutant_mask
-        # new_genes = new_genes + np.random.normal(size=len(genes)) * 0.01
+        new_genes = self.mutate_genes(genes)
         # Create creature
         offspring = type(self)(genes=new_genes)
         self.energy = self.energy - self.action_costs['reproduce']
         return offspring
+
+    def mutate_genes(self, genes):
+        mutant_mask = np.random.random(size=len(genes)) < 0.01
+        mutant_genes = self.completely_new_genes()
+        genes = np.where(mutant_mask, mutant_genes, genes)
+        return genes
 
     @abstractmethod
     def completely_new_genes(self):

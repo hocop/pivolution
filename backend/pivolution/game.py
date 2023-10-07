@@ -5,7 +5,7 @@ from perlin_noise import PerlinNoise
 import scipy
 
 from .creatures import CreatureRandom, CreatureLinear, CreatureNeural, CreatureRecurrent, CreatureGendered
-from .creatures.basic import FEAT_WINDOW
+from .creatures.creature import FEAT_WINDOW
 
 
 PORTAL_SIZE = 0.3

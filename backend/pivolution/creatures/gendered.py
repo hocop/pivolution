@@ -3,8 +3,8 @@ import colorsys
 import copy
 
 from ..networks import Perceptron, Recurrent
-from ..creatures.basic import Creature
-from ..creatures.basic import NUM_FEATURES, FEAT_WINDOW
+from .creature import Creature
+from .creature import NUM_FEATURES, FEAT_WINDOW
 from .inheritance import Genome, get_child
 
 
@@ -97,12 +97,6 @@ class CreatureGendered(Creature):
         self.shared_energy = 0
 
         return offspring
-
-    def mutate_genes(self, genes):
-        mutant_mask = np.random.random(size=len(genes)) < 0.01
-        mutant_genes = self.completely_new_genes()
-        genes = np.where(mutant_mask, mutant_genes, genes)
-        return genes
 
     def completely_new_genes(self):
         net_parms = self.net.get_new_params()

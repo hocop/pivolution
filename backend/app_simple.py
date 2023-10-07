@@ -20,6 +20,7 @@ from pivolution.game import Game
 from pivolution.multigame import MultiGame
 
 
+# Make numpy use only one thread. One thread is much faster
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 os.environ['MKL_NUM_THREADS'] = '1'
 
@@ -68,7 +69,7 @@ async def main(args):
         #     creature = CreatureGendered()
         #     game.spawn(creature)
 
-        game = MultiGame(2, 2, map_h=120, map_w=200)
+        game = MultiGame(2, 3, map_h=120, map_w=120)
         # Spawn initial population
         for i in range(game.nworlds_h):
             for j in range(game.nworlds_w):
