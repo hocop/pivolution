@@ -5,10 +5,11 @@ import copy
 from ..networks import Perceptron, Recurrent
 from ..creatures.basic import Creature
 from ..creatures.basic import NUM_FEATURES, FEAT_WINDOW
+from .inheritance import Genome, get_child
 
 
 class CreatureGendered(Creature):
-    def __init__(self, genes_a=None, genes_b=None):
+    def __init__(self, genome=None):
 
         # Create neural network (without weights yet)
         self.net = Recurrent(
@@ -19,21 +20,15 @@ class CreatureGendered(Creature):
         )
 
         # Make new genes
-        self.genes_a = genes_a
-        self.genes_b = genes_b
-        if self.genes_b is None:
-            assert self.genes_a is None
-        if self.genes_a is None:
-            assert self.genes_b is None
-            self.genes_a = self.completely_new_genes()
-            self.genes_a[0] = 0.0 # predatory
-            self.genes_a[1] = 0.0 # boy prob
-            self.genes_b = self.genes_a
+        self.genome = genome
+        if genome is None:
+            genes_a = self.completely_new_genes()
+            genes_a[0] = 0.0 # predatory
+            genes_a[1] = 0.0 # boy prob
+            genes_b = genes_a
+            self.genome = Genome(dom_chromosome=genes_a, rec_chromosome=genes_b)
 
-        # Merge genes
-        genes = 0.5 * (self.genes_a + self.genes_b)
-
-        super().__init__(genes)
+        super().__init__(self.genome.dom_chromosome)
 
         # Parse genes
         boy_prob = self.genes[1]
@@ -62,7 +57,7 @@ class CreatureGendered(Creature):
 
         # Share genes with creature in front
         if self.action == 'reproduce' and self.dist_front >= 0:
-            creature_in_front.shared_genes = self.get_recombined_genes()
+            creature_in_front.shared_genes = self.genome
             creature_in_front.shared_dist = self.dist_front
             creature_in_front.shared_energy = self.action_costs['reproduce']
             self.energy = self.energy - self.action_costs['reproduce']
@@ -80,12 +75,19 @@ class CreatureGendered(Creature):
         if self.gender == 'boy':
             return
 
-        # Create creature
+        # Create new genome
         if self.shared_genes is not None:
-            father_genes = self.shared_genes
+            new_genome = get_child(self.genome, self.shared_genes)
         else:
-            father_genes = self.get_recombined_genes()
-        offspring = CreatureGendered(genes_a=self.get_recombined_genes(), genes_b=father_genes)
+            new_genome = get_child(self.genome, self.genome)
+        
+        # Mutate new genome
+        new_genome = Genome(
+            dom_chromosome=self.mutate_genes(new_genome.dom_chromosome),
+            rec_chromosome=self.mutate_genes(new_genome.rec_chromosome)
+        )
+
+        offspring = CreatureGendered(genome=new_genome)
         if self.shared_genes is not None:
             offspring.middle_color = [0, 0, 0]
 
@@ -96,17 +98,10 @@ class CreatureGendered(Creature):
 
         return offspring
 
-    def get_recombined_genes(self):
-        '''
-        This is remotely similar to meiosis
-        '''
-        # Cross-over genes
-        cross_over_mask = np.random.random(size=len(self.genes_a)) < 0.5
-        genes = cross_over_mask * self.genes_a + (1 - cross_over_mask) * self.genes_b
-        # Mutation
+    def mutate_genes(self, genes):
         mutant_mask = np.random.random(size=len(genes)) < 0.01
         mutant_genes = self.completely_new_genes()
-        genes = genes * (1 - mutant_mask) + mutant_genes * mutant_mask
+        genes = np.where(mutant_mask, mutant_genes, genes)
         return genes
 
     def completely_new_genes(self):

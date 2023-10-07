@@ -56,7 +56,8 @@ Start frontend server:
 
 ```
 cd frontend
-npm run dev
+npm install  # run once
+NODE_OPTIONS=--openssl-legacy-provider npm run dev
 ```
 
 Open http://127.0.0.1:3000 in your browser and watch the game play itself.

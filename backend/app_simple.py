@@ -1,6 +1,5 @@
 """my_controller controller."""
-
-from lib2to3.pytree import Base
+import os
 import pickle
 import numpy as np
 import argparse
@@ -21,6 +20,10 @@ from pivolution.game import Game
 from pivolution.multigame import MultiGame
 
 
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+
+
 camera_image = np.zeros([100, 100, 3], dtype='uint8')
 
 FPS = 30
@@ -28,7 +31,6 @@ FPS = 30
 out_video = None
 
 async def frame(request):
-    # camera_image = game.render()
     stream = BytesIO()
     Image.fromarray(camera_image).save(stream, "PNG")
     return web.Response(body=stream.getvalue(), content_type='image/PNG')
@@ -62,6 +64,10 @@ async def main(args):
             game = pickle.load(handle)
     else:
         # game = Game()
+        # for _ in range(1000):
+        #     creature = CreatureGendered()
+        #     game.spawn(creature)
+
         game = MultiGame(2, 2, map_h=120, map_w=200)
         # Spawn initial population
         for i in range(game.nworlds_h):

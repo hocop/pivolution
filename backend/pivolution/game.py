@@ -1,7 +1,6 @@
 import pickle
 import numpy as np
 import time
-from numba import njit
 from perlin_noise import PerlinNoise
 import scipy
 
