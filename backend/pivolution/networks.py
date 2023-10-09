@@ -47,16 +47,18 @@ class Perceptron:
 class Recurrent:
     def __init__(self, n_inputs, n_outputs, hidden_size, state_size):
         self.n_outputs = n_outputs
+        self.state_decay = 1
         self.net = Perceptron(
             n_inputs + state_size,
             n_outputs + 2 * state_size,
             hidden_size
         )
         self.state = np.zeros(state_size)
-    
+
     def set_weights(self, params):
-        self.net.set_weights(params)
-    
+        self.state_decay = params[0]
+        self.net.set_weights(params[1:])
+
     def forward(self, feats):
         feats = np.hstack([feats, self.state])
         out = self.net.forward(feats)
@@ -66,11 +68,17 @@ class Recurrent:
         new_state = state_update[len(self.state):]
         self.state = self.state * gate + new_state * (1 - gate)
 
+        # Decay
+        self.state = self.state * self.state_decay
+
         return out[:self.n_outputs]
 
     def get_new_params(self):
-        return self.net.get_new_params()
+        return np.concatenate([
+            np.random.random(size=1),
+            self.net.get_new_params()
+        ], 0)
 
     @property
     def n_params(self):
-        return self.net.n_params
+        return 1 + self.net.n_params
