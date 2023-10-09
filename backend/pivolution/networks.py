@@ -75,7 +75,7 @@ class Recurrent:
 
     def get_new_params(self):
         return np.concatenate([
-            np.random.random(size=1),
+            0.8 + 0.2 * np.random.random(size=1),
             self.net.get_new_params()
         ], 0)
 

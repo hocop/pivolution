@@ -69,7 +69,7 @@ async def main(args):
         #     creature = CreatureGendered()
         #     game.spawn(creature)
 
-        game = MultiGame(2, 3, map_h=160, map_w=160)
+        game = MultiGame(2, 3, map_h=160, map_w=160, save_period=args.save_period)
         # Spawn initial population
         for i in range(game.nworlds_h):
             for j in range(game.nworlds_w):

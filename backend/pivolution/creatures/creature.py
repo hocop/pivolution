@@ -128,26 +128,29 @@ class Creature(ABC):
         return offspring
 
     def mutate_genes(self, genes: GeneArray):
-        mutant_mask = np.random.random(size=len(genes)) < 0.01
+        mutant_mask = np.random.random(size=len(genes)) < 10**genes['log_mutability']
         mutant_genes = self.completely_new_genes()
         new_arr = np.where(mutant_mask, mutant_genes.asarray(), genes.asarray())
         mutant_genes.set_array(new_arr)
+        if np.random.random() < 0.01:
+            mutant_genes['log_mutability'] = -1 - 3 * np.random.random(size=1)
         return mutant_genes
 
-    @abstractmethod
     def completely_new_genes(self) -> GeneArray:
-        pass
+        genes = GeneArray(self.genes_config())
+        genes['predatory'] = np.random.random(size=1)
+        genes['log_mutability'] = -1 - 3 * np.random.random(size=1)
+        return genes
 
     @abstractmethod
     def action_from_feats(self, feats):
         pass
 
-    @abstractmethod
     def genes_config(self) -> dict[str, int]:
-        pass
-
-    def new_empty_genes(self) -> GeneArray:
-        return GeneArray(self.genes_config())
+        return {
+            'predatory': 1,
+            'log_mutability': 1,
+        }
 
 
 class CreatureNeural(Creature):
@@ -169,15 +172,15 @@ class CreatureNeural(Creature):
         return action
 
     def genes_config(self) -> dict[str, int]:
-        return {
-            'predatory': 1,
+        cfg = super().genes_config()
+        cfg.update({
             'net_params': self.net.n_params,
-        }
+        })
+        return cfg
 
     def completely_new_genes(self):
-        genes = self.new_empty_genes()
+        genes = super().completely_new_genes()
         genes['net_params'] = self.net.get_new_params()
-        genes['predatory'] = np.random.random(size=1)
         return genes
 
 
@@ -202,13 +205,14 @@ class CreatureRecurrent(Creature):
         return action
 
     def genes_config(self) -> dict[str, int]:
-        return {
-            'predatory': 1,
+        cfg = super().genes_config()
+        cfg.update({
             'net_params': self.net.n_params,
-        }
+        })
+        return cfg
 
     def completely_new_genes(self):
-        genes = self.new_empty_genes()
+        genes = super().completely_new_genes()
         genes['net_params'] = self.net.get_new_params()
         genes['predatory'] = np.random.random(size=1)
         return genes
@@ -220,13 +224,14 @@ class CreatureRandom(Creature):
         return action
 
     def genes_config(self) -> dict[str, int]:
-        return {
-            'predatory': 1,
+        cfg = super().genes_config()
+        cfg.update({
             'action_probs': len(self.ACTION_NAMES),
-        }
+        })
+        return cfg
 
     def completely_new_genes(self):
-        genes = self.new_empty_genes()
+        genes = super().completely_new_genes()
         genes['predatory'] = np.random.random(size=1)
         genes['action_probs'] = np.random.random(size=len(self.ACTION_NAMES))
         genes['action_probs'] = genes['action_probs'] / genes['action_probs'].sum()

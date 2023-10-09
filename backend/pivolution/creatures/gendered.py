@@ -33,7 +33,7 @@ class CreatureGendered(Creature):
 
         # Initialize creature from dominant genes
         super().__init__(
-            self.new_empty_genes().set_array(self.genome.dom_chromosome)
+            super().completely_new_genes().set_array(self.genome.dom_chromosome)
         )
 
         # Parse genes
@@ -94,8 +94,8 @@ class CreatureGendered(Creature):
         
         # Mutate new genome
         new_genome = Genome(
-            dom_chromosome=self.mutate_genes(self.new_empty_genes().set_array(new_genome.dom_chromosome)).asarray(),
-            rec_chromosome=self.mutate_genes(self.new_empty_genes().set_array(new_genome.rec_chromosome)).asarray(),
+            dom_chromosome=self.mutate_genes(super().completely_new_genes().set_array(new_genome.dom_chromosome)).asarray(),
+            rec_chromosome=self.mutate_genes(super().completely_new_genes().set_array(new_genome.rec_chromosome)).asarray(),
         )
 
         offspring = CreatureGendered(genome=new_genome)
@@ -110,17 +110,17 @@ class CreatureGendered(Creature):
         return offspring
 
     def genes_config(self) -> dict[str, int]:
-        return {
-            'predatory': 1,
+        cfg = super().genes_config()
+        cfg.update({
             'boy_prob': 1,
             'energy_sharing': 1,
             'net_params': self.net.n_params,
             'appearance': self.N_APPEARANCE_FEATS,
-        }
+        })
+        return cfg
 
     def completely_new_genes(self) -> GeneArray:
-        genes = self.new_empty_genes()
-        genes['predatory'] = np.random.random(size=1)
+        genes = super().completely_new_genes()
         genes['boy_prob'] = np.random.random(size=1)
         genes['energy_sharing'] = np.random.random(size=1)
         genes['net_params'] = self.net.get_new_params()
