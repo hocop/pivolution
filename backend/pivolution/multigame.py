@@ -4,7 +4,6 @@ import time
 from multiprocessing import Process, Queue
 import cv2
 
-from .creatures import CreatureRandom, CreatureLinear, CreatureNeural, CreatureRecurrent, CreatureGendered
 from .game import Game, WORLD_MARGIN, generate_elevation
 
 

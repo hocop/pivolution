@@ -37,7 +37,11 @@ class Perceptron:
         return out
 
     def get_new_params(self):
-        return np.random.normal(size=sum(self.weight_sizes))
+        return np.random.normal(size=self.n_params)
+    
+    @property
+    def n_params(self):
+        return sum(self.weight_sizes)
 
 
 class Recurrent:
@@ -66,3 +70,7 @@ class Recurrent:
 
     def get_new_params(self):
         return self.net.get_new_params()
+
+    @property
+    def n_params(self):
+        return self.net.n_params

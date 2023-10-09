@@ -4,6 +4,7 @@ import colorsys
 import copy
 
 from ..networks import Perceptron, Recurrent
+from .gene_arrays import GeneArray
 
 NUM_FEATURES = 8
 FEAT_WINDOW = 5
@@ -29,7 +30,7 @@ class Creature(ABC):
     }
     OMNIVORY = 1/3
 
-    def __init__(self, genes=None):
+    def __init__(self, genes: GeneArray = None):
         self.health = 1.0
         self.energy = 0.25
         self.age = 0
@@ -38,10 +39,10 @@ class Creature(ABC):
 
         if genes is None:
             self.genes = self.completely_new_genes()
-            self.genes[0] = 0 # predatory
+            self.genes['predatory'] = 0
         else:
             self.genes = genes
-        self.predatory = np.clip(self.genes[0], 0, 1)
+        self.predatory = np.clip(self.genes['predatory'], 0, 1)
 
         self.face_color = [255 - self.color[1]] * 3
         self.middle_color = None
@@ -61,7 +62,7 @@ class Creature(ABC):
         water_level, air_level, meat_in_this_cell, creature_in_front, local_feats = self.features
 
         # Photosynthesize
-        self.energy += self.gain_from_sun * np.exp(-(meat_in_this_cell * 4)) * (2 - np.exp(-(air_level * 5)))
+        self.energy += self.gain_from_sun * np.exp(-(meat_in_this_cell * 4)) * (2 - np.exp(-air_level))
         # Eat meat
         self.energy += self.gain_from_meat * meat_in_this_cell
         self.energy = min(self.energy, 1.0)
@@ -119,42 +120,34 @@ class Creature(ABC):
 
 
     def reproduce(self):
-        genes = self.genes.copy()
         # Mutation
-        new_genes = self.mutate_genes(genes)
+        new_genes = self.mutate_genes(self.genes)
         # Create creature
         offspring = type(self)(genes=new_genes)
         self.energy = self.energy - self.action_costs['reproduce']
         return offspring
 
-    def mutate_genes(self, genes):
+    def mutate_genes(self, genes: GeneArray):
         mutant_mask = np.random.random(size=len(genes)) < 0.01
         mutant_genes = self.completely_new_genes()
-        genes = np.where(mutant_mask, mutant_genes, genes)
-        return genes
+        new_arr = np.where(mutant_mask, mutant_genes.asarray(), genes.asarray())
+        mutant_genes.set_array(new_arr)
+        return mutant_genes
 
     @abstractmethod
-    def completely_new_genes(self):
+    def completely_new_genes(self) -> GeneArray:
         pass
 
     @abstractmethod
     def action_from_feats(self, feats):
         pass
 
+    @abstractmethod
+    def genes_config(self) -> dict[str, int]:
+        pass
 
-class CreatureLinear(Creature):
-    def action_from_feats(self, feats):
-        feats = feats.flatten()
-        w_idx = 1 + len(feats) * len(self.ACTION_NAMES)
-        logits = feats[None] @ self.genes[1: w_idx].reshape(-1, len(self.ACTION_NAMES))
-        logits = logits.flatten() + self.genes[w_idx:]
-        action = self.ACTION_NAMES[np.argmax(logits)]
-        return action
-
-    def completely_new_genes(self):
-        genes = np.random.normal(size=1 + NUM_FEATURES * FEAT_WINDOW * FEAT_WINDOW * len(self.ACTION_NAMES) + len(self.ACTION_NAMES))
-        genes[0] = np.random.random()
-        return genes
+    def new_empty_genes(self) -> GeneArray:
+        return GeneArray(self.genes_config())
 
 
 class CreatureNeural(Creature):
@@ -167,7 +160,7 @@ class CreatureNeural(Creature):
 
         super().__init__(genes)
 
-        self.net.set_weights(self.genes[1:])
+        self.net.set_weights(self.genes['net_params'])
 
     def action_from_feats(self, feats):
         feats = feats.flatten()
@@ -175,10 +168,16 @@ class CreatureNeural(Creature):
         action = self.ACTION_NAMES[np.argmax(logits)]
         return action
 
+    def genes_config(self) -> dict[str, int]:
+        return {
+            'predatory': 1,
+            'net_params': self.net.n_params,
+        }
+
     def completely_new_genes(self):
-        net_parms = self.net.get_new_params()
-        predatory = np.random.random(size=1)
-        genes = np.hstack([predatory, net_parms])
+        genes = self.new_empty_genes()
+        genes['net_params'] = self.net.get_new_params()
+        genes['predatory'] = np.random.random(size=1)
         return genes
 
 
@@ -194,7 +193,7 @@ class CreatureRecurrent(Creature):
 
         super().__init__(genes)
 
-        self.net.set_weights(self.genes[1:])
+        self.net.set_weights(self.genes['net_params'])
 
     def action_from_feats(self, feats):
         feats = feats.flatten()
@@ -202,20 +201,33 @@ class CreatureRecurrent(Creature):
         action = self.ACTION_NAMES[np.argmax(logits)]
         return action
 
+    def genes_config(self) -> dict[str, int]:
+        return {
+            'predatory': 1,
+            'net_params': self.net.n_params,
+        }
+
     def completely_new_genes(self):
-        net_parms = self.net.get_new_params()
-        predatory = np.random.random(size=1)
-        genes = np.hstack([predatory, net_parms])
+        genes = self.new_empty_genes()
+        genes['net_params'] = self.net.get_new_params()
+        genes['predatory'] = np.random.random(size=1)
         return genes
 
 
 class CreatureRandom(Creature):
     def action_from_feats(self, feats):
-        action = np.random.choice(self.ACTION_NAMES, p=self.genes[1:])
+        action = np.random.choice(self.ACTION_NAMES, p=self.genes['action_probs'])
         return action
 
+    def genes_config(self) -> dict[str, int]:
+        return {
+            'predatory': 1,
+            'action_probs': len(self.ACTION_NAMES),
+        }
+
     def completely_new_genes(self):
-        genes = np.random.random(size=1 + len(self.ACTION_NAMES))
-        genes = np.clip(genes, 0, None)
-        genes[1:] = genes[1:] / genes[1:].sum()
+        genes = self.new_empty_genes()
+        genes['predatory'] = np.random.random(size=1)
+        genes['action_probs'] = np.random.random(size=len(self.ACTION_NAMES))
+        genes['action_probs'] = genes['action_probs'] / genes['action_probs'].sum()
         return genes

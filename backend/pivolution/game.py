@@ -4,7 +4,7 @@ import time
 from perlin_noise import PerlinNoise
 import scipy
 
-from .creatures import CreatureRandom, CreatureLinear, CreatureNeural, CreatureRecurrent, CreatureGendered
+from .creatures import CreatureGendered
 from .creatures.creature import FEAT_WINDOW
 
 
@@ -200,11 +200,11 @@ class Game:
                     # print(self.subworld_id, 'RECIEVED', pos_x, pos_y, self.creature_id_map[pos_y, pos_x])
 
         # Creature params map
-        predatory_map = np.full([self.map_h, self.map_w], -1)
-        energy_map = np.full([self.map_h, self.map_w], -1)
-        health_map = np.full([self.map_h, self.map_w], -1)
+        predatory_map = np.full([self.map_h, self.map_w], -0.1)
+        energy_map = np.full([self.map_h, self.map_w], -0.1)
+        health_map = np.full([self.map_h, self.map_w], -0.1)
         direction_map = np.full([self.map_h, self.map_w], 0)
-        gender_map = np.full([self.map_h, self.map_w], -1)
+        gender_map = np.full([self.map_h, self.map_w], -0.1)
         for idx in range(len(self.creatures)):
             if self.creatures[idx] is None:
                 continue

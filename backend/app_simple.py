@@ -69,7 +69,7 @@ async def main(args):
         #     creature = CreatureGendered()
         #     game.spawn(creature)
 
-        game = MultiGame(2, 3, map_h=120, map_w=120)
+        game = MultiGame(2, 3, map_h=160, map_w=160)
         # Spawn initial population
         for i in range(game.nworlds_h):
             for j in range(game.nworlds_w):
@@ -88,16 +88,21 @@ async def main(args):
         global camera_image
         count_0 = game.steps_count
         while True:
-            game.step()
-            camera_image = game.render()
+            try:
+                game.step()
+                camera_image = game.render()
 
-            # Write to output file
-            if args.write_video is not None:
-                out_video.write(camera_image[:, :, ::-1])
+                # Write to output file
+                if args.write_video is not None:
+                    out_video.write(camera_image[:, :, ::-1])
 
-            if args.max_steps is not None and game.steps_count - count_0 > args.max_steps:
+                if args.max_steps is not None and game.steps_count - count_0 > args.max_steps:
+                    game.stop_games()
+                    print('Max steps reached', game.steps_count, args.max_steps)
+                    break
+            except KeyboardInterrupt:
+                print('KeyboardInterrupt')
                 game.stop_games()
-                print('Max steps reached', game.steps_count, args.max_steps)
                 break
 
     game_thread = threading.Thread(target=game_loop)
@@ -123,12 +128,10 @@ if __name__ == "__main__":
     parser.add_argument("--verbose", "-v", action="count")
     args = parser.parse_args()
 
-    try:
-        asyncio.run(main(args))
-    except:
-        print('#' * 100)
-        print('Finishing')
-        if args.write_video is not None:
-            out_video.release()
-        print('Finished')
-        print('#' * 100)
+    asyncio.run(main(args))
+    print('#' * 100)
+    print('Finishing')
+    if args.write_video is not None:
+        out_video.release()
+    print('Finished')
+    print('#' * 100)
